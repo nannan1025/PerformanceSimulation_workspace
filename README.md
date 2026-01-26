@@ -73,11 +73,13 @@ It is compatible with the following submodule versions:
 | CorePerfDSL-Examples | v2.0 |
 
 ## Support Rocket/CV32E40P_LLM/CVA_LLM
+
 1. Code Generation
 
       $./scripts/code_gen.sh New_Core_Path/new_core.corePerfDsl
 
 2. Performance Simulation
+   
 If the core is simple scalar core, like CV32E40P, can use this to set up some configuration. But if the core is superscalar core like CVA6, needs bootroom or others, also can use this scripts, but needs change a little bit.
 
       $./scripts/sim_gen_simple.sh ROCKET RV64IMACFD    
@@ -91,5 +93,6 @@ the first parameter is the new core, the second parameter is the baseline core(r
 3. Trace Anlayzer
 
       $./scripts/trace_analyzer.sh CV32E40P_LLM CV32E40P
+   
 
       $./scripts/trace_analyzer_summary.sh CV32E40P_LLM
