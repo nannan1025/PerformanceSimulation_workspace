@@ -75,12 +75,12 @@ It is compatible with the following submodule versions:
 ## Support Rocket/CV32E40P_LLM/CVA_LLM
 1. Code Generation
 
-      $ ./scripts/code_gen.sh New_Core_Path/new_core.corePerfDsl
+      $./scripts/code_gen.sh New_Core_Path/new_core.corePerfDsl
 
 2. Performance Simulation
 If the core is simple scalar core, like CV32E40P, can use this to set up some configuration. But if the core is superscalar core like CVA6, needs bootroom or others, also can use this scripts, but needs change a little bit.
 
-      $ ./scripts/sim_gen_simple.sh ROCKET RV64IMACFD    
+      $./scripts/sim_gen_simple.sh ROCKET RV64IMACFD    
 
 Run EM benchmark
 
