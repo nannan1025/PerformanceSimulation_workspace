@@ -8,3 +8,10 @@ code_gen/temp
 *.c
 *.o 
 *.so
+llm_output/
+trace_output/
+scripts/test_CV32E40P_LLM.sh
+scripts/test_CVA6.sh
+scripts/test_CVA62.sh
+target_sw/examples/CVA62/
+

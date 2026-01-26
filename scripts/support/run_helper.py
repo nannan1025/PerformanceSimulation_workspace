@@ -10,12 +10,19 @@ argParser.add_argument("-c", "--core", help="Target core architecture [cv32e40p 
 args, args_passThrough = argParser.parse_known_args()
 
 sim_args = ""
-
+sim_args_rtl = ""
 # Resolve CORE
 if args.core is None:
    sys.exit("FATAL: Called support-script run_helper.py without specifying a core")
 else:
    sim_args += " --core " + args.core
+
+if args.core is None:
+   sys.exit("FATAL: Called support-script run_helper.py without specifying a core")
+elif args.core == "CVA62":
+   sim_args_rtl += " --core cva6"
+else:
+   sim_args_rtl += " --core cv32e40p"
 
 # Resolve TARGET_SW
 targetSW_failed = False
@@ -41,11 +48,21 @@ if targetSW_failed:
 # Resolve BOOTROM (if applicable)
 if args.core == "cva6":
    sim_args += " --bootrom " + os.environ.get(targetSW_prefix + "BOOTROM")
-   
+   sim_args_rtl +=  " --bootrom " +  os.environ.get(targetSW_prefix + "BOOTROM")
+if args.core == "CVA62":
+   sim_args += " --bootrom " + os.environ.get(targetSW_prefix + "BOOTROM") 
+   sim_args_rtl += " --bootrom " + os.environ.get("PSW_TARGETSW_CVA6_BOOTROM")
 # Execute
 simulator = os.environ.get("PSW_PERF_SIM")
 exe = simulator + "/run_simulator.py " + targetSW + sim_args
 for arg_i in args_passThrough:
    exe += " " + arg_i
-   
+
 os.system(exe)
+# sim_args_rtl += " -m vrtl"
+# sim_args_rtl += " -o /home/yang/program/project/Performance_Simulator_workspace_3/PerformanceSimulation_workspace/trace_output/"+args.core+ "/"+args.targetSW.split(":")[1]+"/rtl"  #TODO
+
+# simulator_rtl = os.environ.get("PSW_FIVP_SIM")
+# exe_rtl = os.environ.get("PSW_SCRIPTS_SUPPORT") + "/rtl_run_helper.py " + targetSW + " " + sim_args_rtl
+# print(exe_rtl)
+# os.system(exe_rtl)

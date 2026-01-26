@@ -18,6 +18,7 @@ ${PSW_PERF_SIM}/setup_simulator.sh
 cd ${PSW_M2ISAR}
 python3.10 -m venv venv
 source venv/bin/activate
+# pip install --upgrade pip
 pip install -e .
 deactivate
 
