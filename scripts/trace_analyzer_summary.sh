@@ -2,9 +2,9 @@
 #USAGE:
 #scripts/trace_analyzer_summary.sh corename
 # 输出文件名
-timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
-OUT_FILE="trace_output/"$1"/summary_${timestamp}.csv"
-
+# timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+# OUT_FILE="trace_output/"$1"/summary_${timestamp}.csv"
+OUT_FILE=$2
 # 写表头（benchmark 名 + 8 个数字）
 # 这 8 个数字分别是：
 # instructions, cycles_obs, cycles_etiss,

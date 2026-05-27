@@ -21,6 +21,8 @@ if args.core is None:
    sys.exit("FATAL: Called support-script run_helper.py without specifying a core")
 elif args.core == "CVA62":
    sim_args_rtl += " --core cva6"
+elif args.core == "CVA6_QWEN_1":
+   sim_args_rtl += " --core cva6"
 else:
    sim_args_rtl += " --core cv32e40p"
 
@@ -50,6 +52,9 @@ if args.core == "cva6":
    sim_args += " --bootrom " + os.environ.get(targetSW_prefix + "BOOTROM")
    sim_args_rtl +=  " --bootrom " +  os.environ.get(targetSW_prefix + "BOOTROM")
 if args.core == "CVA62":
+   sim_args += " --bootrom " + os.environ.get(targetSW_prefix + "BOOTROM") 
+   sim_args_rtl += " --bootrom " + os.environ.get("PSW_TARGETSW_CVA6_BOOTROM")
+if args.core == "CVA6_QWEN_1":
    sim_args += " --bootrom " + os.environ.get(targetSW_prefix + "BOOTROM") 
    sim_args_rtl += " --bootrom " + os.environ.get("PSW_TARGETSW_CVA6_BOOTROM")
 # Execute

@@ -72,8 +72,7 @@ It is compatible with the following submodule versions:
 | etiss_arch_riscv | WiP |
 | CorePerfDSL-Examples | v2.0 |
 
-## Support Rocket/CV32E40P_LLM/CVA_LLM
-
+## Support Rocket/CV32E40P_LLM/CVA6_LLM
 1. Code Generation
 
       $./scripts/code_gen.sh New_Core_Path/new_core.corePerfDsl

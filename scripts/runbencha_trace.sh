@@ -38,25 +38,32 @@ TARGET_DIR_VALUE="$(printenv "$TARGET_DIR")"
 # 创建 trace_output 目录（如果不存在）
 # mkdir -p trace_output
 
-# for b in "${benches[@]}"; do
+
+# 1) support rocket
+
+for b in "${benches[@]}"; do
     
-#     outdir="./trace_output/rocket_${b}"
+    outdir="./trace_output/ROCKET/rocket_${b}"
 
-#     mkdir -p "$outdir/asm"
-#     mkdir -p "$outdir/perf"
+    mkdir -p "$outdir/asm"
+    mkdir -p "$outdir/perf"
+    rm -rf "$outdir/asm"/*
+    rm -rf "$outdir/perf"/*
+    echo "Running $b ..."
+    ./scripts/run2.sh "em:${b}.riscv" $core_name -ta="$outdir/asm" -tp="$outdir/perf"
+    mkdir -p "$outdir/timing"
+    rm -rf "$outdir/timing"/*
+    mv "$outdir/perf"/ROCKET_timing*.csv "$outdir/timing"/ 2>/dev/null || true
+    echo "Done: $b"
+    echo
+    for file_i in "$outdir/asm"/*.txt; do
+        [ -e "$file_i" ] || continue
+        mv "$file_i" "${file_i%.txt}.csv"
+    done
+done
 
-#     echo "Running $b ..."
-#     ./scripts/run2.sh "em:${b}.riscv" ROCKET -ta="$outdir/asm" -tp="$outdir/perf"
-#     mkdir -p "$outdir/timing"
-#     mv "$outdir/perf"/ROCKET_timing*.csv "$outdir/timing"/ 2>/dev/null || true
-#     echo "Done: $b"
-#     echo
-#     for file_i in "$outdir/asm"/*.txt; do
-#         [ -e "$file_i" ] || continue
-#         mv "$file_i" "${file_i%.txt}.csv"
-#     done
-# done
 
+# 2) support cv32e40p
 
 # for b in "${benches[@]}"; do
     
@@ -77,29 +84,32 @@ TARGET_DIR_VALUE="$(printenv "$TARGET_DIR")"
 #     done
 # done
 
-for b in "${benches[@]}"; do
+
+# 3) support cv32e40p and cva6
+
+# for b in "${benches[@]}"; do
     
-    outdir="./trace_output/"$1"/${b}"
-    mkdir -p "$outdir/asm"
-    mkdir -p "$outdir/perf"
-    rm -rf "$outdir/asm"/*
-    rm -rf "$outdir/perf"/*
-    # mkdir -p "$outdir/rtl"
-    echo "Running $b ..."
-    ./scripts/run2.sh "em:${b}" $1 -ta="$outdir/asm" -tp="$outdir/perf"
-    mkdir -p "$outdir/timing"
-    rm -rf "$outdir/timing"/*
-    mv "$outdir/perf"/"$arg_upper"_timing*.csv "$outdir/timing"/ 2>/dev/null || true
-    echo "Done: $b Performance Simulator and rtl simulation"
-    echo
-    for file_i in "$outdir/asm"/*.txt; do
-        [ -e "$file_i" ] || continue
-        mv "$file_i" "${file_i%.txt}.csv"
-    done
-    # echo "rtl converter"
-    # python /home/yang/program/project/Performance_Estimator_workspace_2/PerformanceEstimator_workspace/tools/TraceAnalyzer/rtl_trace_converter/run.py "$outdir/rtl" -a $compare_core -o "$outdir/rtl"
-    # mkdir -p "$outdir/rtl/timing" "$outdir/rtl/raw"
-    # mv "$outdir/rtl"/instr_*.csv "$outdir/rtl/timing" 2>/dev/null || true
-    # mv "$outdir/rtl"/pipeline_*.csv "$outdir/rtl/raw" 2>/dev/null || true
-done
+#     outdir="./trace_output/"$1"/${b}"
+#     mkdir -p "$outdir/asm"
+#     mkdir -p "$outdir/perf"
+#     rm -rf "$outdir/asm"/*
+#     rm -rf "$outdir/perf"/*
+#     # mkdir -p "$outdir/rtl"
+#     echo "Running $b ..."
+#     ./scripts/run2.sh "em:${b}" $1 -ta="$outdir/asm" -tp="$outdir/perf"
+#     mkdir -p "$outdir/timing"
+#     rm -rf "$outdir/timing"/*
+#     mv "$outdir/perf"/"$arg_upper"_timing*.csv "$outdir/timing"/ 2>/dev/null || true
+#     echo "Done: $b Performance Simulator and rtl simulation"
+#     echo
+#     for file_i in "$outdir/asm"/*.txt; do
+#         [ -e "$file_i" ] || continue
+#         mv "$file_i" "${file_i%.txt}.csv"
+#     done
+#     # echo "rtl converter"
+#     # python /home/yang/program/project/Performance_Estimator_workspace_2/PerformanceEstimator_workspace/tools/TraceAnalyzer/rtl_trace_converter/run.py "$outdir/rtl" -a $compare_core -o "$outdir/rtl"
+#     # mkdir -p "$outdir/rtl/timing" "$outdir/rtl/raw"
+#     # mv "$outdir/rtl"/instr_*.csv "$outdir/rtl/timing" 2>/dev/null || true
+#     # mv "$outdir/rtl"/pipeline_*.csv "$outdir/rtl/raw" 2>/dev/null || true
+# done
 echo "All benchmarks finished."

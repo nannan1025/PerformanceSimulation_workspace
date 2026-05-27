@@ -37,16 +37,17 @@ for b in "${benches[@]}"; do
     echo "=============================="
     echo "Running benchmark: $b"
     echo "=============================="
-    COMP_TRACE="./trace_output/"$1"/${b}/rtl/timing"
+    # COMP_TRACE="./trace_output/"$1"/${b}/rtl/timing"
     # COMP_TRACE="./trace_output/CVA62_final/${b}/rtl/timing"
-    # COMP_TRACE="/home/yang/program/project/Core/chipyard/sims/verilator/output/chipyard.harness.TestHarness.RocketConfig/${b}"
-   
-    ISS_TRACE="./trace_output/"$1"/${b}/asm"
+    COMP_TRACE="/home/yang/program/project/Core/chipyard/sims/verilator/output/chipyard.harness.TestHarness.RocketConfig/${b}"
+    # ISS_TRACE="./trace_output/"$1"/${b}/asm"
+    ISS_TRACE="./trace_output/"$1"/rocket_${b}/asm"
     # PIPELINE_TRACE="./trace_output/"$1"/${b}/rtl/timing"
-    PIPELINE_TRACE="./trace_output/CVA62_final/${b}/rtl/timing"
+    # PIPELINE_TRACE="./trace_output/CVA62_final/${b}/rtl/timing"
+    PIPELINE_TRACE="/home/yang/program/project/Core/chipyard/sims/verilator/output/chipyard.harness.TestHarness.RocketConfig/${b}"
 
-    TIMING_TRACE="./trace_output/"$1"/${b}/timing"
-    OUTPUT_DIR="./trace_output/"$1"/${b}/"
+    TIMING_TRACE="./trace_output/"$1"/rocket_${b}/timing"
+    OUTPUT_DIR="./trace_output/"$1"/rocket_${b}/"
     COM=(python3 "$RUN_DIR" "$ISS_TRACE" "-comp=$COMP_TRACE" "-o=$OUTPUT_DIR")
     # 用数组构造命令，避免 eval 和引号问题
     CMD=(python3 "$RUN_DIR" "$ISS_TRACE")

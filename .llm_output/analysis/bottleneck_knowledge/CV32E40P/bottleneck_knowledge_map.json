@@ -1,0 +1,202 @@
+{
+  "processor": "CV32E40P",
+  "source_files": [
+    "code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/include/CV32E40P_PerformanceModel.h",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/src/CV32E40P_PerformanceModel.cpp",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/src/CV32E40P_SchedulingFunction.cpp",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/include/CV32E40P_Channel.h",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/monitors/variants/CV32E40P/src/CV32E40P_Monitor.cpp",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/include/models/common/StandardRegisterModel.h",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/common/StaticBranchPredictModel.cpp",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerModel.cpp",
+    "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerUnsignedModel.cpp"
+  ],
+  "pipeline_stages": [
+    {
+      "stage_name": "IF_stage",
+      "role": "Instruction fetch and PC generation",
+      "timing_rule": "Fetch and PCGen wait on current IF entry and staBranchPredModel.getPc(), then IF_stage waits on ID_stage.",
+      "code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:48-55", "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/src/CV32E40P_SchedulingFunction.cpp:30-50"],
+      "can_stall_or_block": true
+    },
+    {
+      "stage_name": "ID_stage",
+      "role": "Decode, operand readiness, jump decode",
+      "timing_rule": "Decode is IF+1; operand reads wait on StandardRegisterModel; ID waits on EX_stage.",
+      "code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:49-51"],
+      "can_stall_or_block": true
+    },
+    {
+      "stage_name": "EX_stage",
+      "role": "ALU, branch ALU, CSR, LSU, MUL, MULH, DIV, DIVU",
+      "timing_rule": "Functional units produce Xd or Pc_np; divider models and MULH static latency can extend readiness.",
+      "code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:21-24", "code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:51"],
+      "can_stall_or_block": true
+    },
+    {
+      "stage_name": "WB_stage",
+      "role": "Memory read/write data port completion",
+      "timing_rule": "Load/store memory microactions use DPort_R/DPort_W.",
+      "code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:42-43", "code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:52"],
+      "can_stall_or_block": true
+    }
+  ],
+  "instruction_flows": [
+    {
+      "instruction_class": "Arith_Ra_Rb",
+      "example_opcodes": ["add", "sub", "xor", "or", "and"],
+      "pipeline_flow": ["IF_stage", "ID_stage", "EX_stage"],
+      "microactions": ["uA_IFetch", "uA_PCGen", "uA_Decode", "uA_OF_A", "uA_OF_B", "uA_ALU_RegUpdate"],
+      "potential_bottleneck_mechanisms": ["RAW dependency", "ALU structural timing"]
+    },
+    {
+      "instruction_class": "Div_Ra_Rb/DivU_Ra_Rb",
+      "example_opcodes": ["div", "rem", "divu", "remu"],
+      "pipeline_flow": ["IF_stage", "ID_stage", "EX_stage"],
+      "microactions": ["uA_Decode", "uA_OF_A", "uA_OF_B", "uA_DIV", "uA_DIVU"],
+      "potential_bottleneck_mechanisms": ["Variable divider latency", "RAW dependency"]
+    },
+    {
+      "instruction_class": "Load/Store",
+      "example_opcodes": ["lw", "lh", "lbu", "sb", "sw"],
+      "pipeline_flow": ["IF_stage", "ID_stage", "EX_stage", "WB_stage"],
+      "microactions": ["uA_LSU", "uA_Memory_R", "uA_Memory_W"],
+      "potential_bottleneck_mechanisms": ["DPort/LSU structural timing"]
+    },
+    {
+      "instruction_class": "Branch/Jump",
+      "example_opcodes": ["beq", "bne", "jal", "jalr"],
+      "pipeline_flow": ["IF_stage", "ID_stage", "EX_stage"],
+      "microactions": ["uA_JumpDecode", "uA_JumpDecodeReg", "uA_ALU_Branch"],
+      "potential_bottleneck_mechanisms": ["Static branch prediction redirect"]
+    }
+  ],
+  "external_models": [
+    {
+      "name": "regModel",
+      "class_or_file": "common::StandardRegisterModel",
+      "code_locations": ["etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/include/models/common/StandardRegisterModel.h:26-42"],
+      "mechanism": "Tracks destination register readiness and exposes source readiness for RAW timing."
+    },
+    {
+      "name": "staBranchPredModel",
+      "class_or_file": "common::StaticBranchPredictModel",
+      "code_locations": ["etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/common/StaticBranchPredictModel.cpp:23-54"],
+      "mechanism": "Always predict branch not taken."
+    },
+    {
+      "name": "divider/divider_u",
+      "class_or_file": "cv32e40p::DividerModel and cv32e40p::DividerUnsignedModel",
+      "code_locations": ["etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerModel.cpp:24-48", "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerUnsignedModel.cpp:24-41"],
+      "mechanism": "Variable delay from divisor data."
+    }
+  ],
+  "potential_bottlenecks": [
+    {
+      "bottleneck_id": "CV32-BN-001",
+      "bottleneck_name": "RAW dependency wait through StandardRegisterModel",
+      "processor": "CV32E40P",
+      "category": "data_dependency",
+      "related_pipeline_stage": ["ID_stage"],
+      "related_instruction_classes": ["Arith_Ra_Rb", "Arith_Ra", "Mul_Ra_Rb", "MulH_Ra_Rb", "Div_Ra_Rb", "DivU_Ra_Rb", "Load", "Store", "Branch_Ra_Rb", "jalr"],
+      "related_code_locations": ["etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/include/models/common/StandardRegisterModel.h:37-39", "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/variants/CV32E40P/src/CV32E40P_SchedulingFunction.cpp:51-65"],
+      "triggering_condition_in_code": "Operand nodes wait on regModel.getXa()/getXb() readiness.",
+      "cycle_delay_mechanism": "Consumer cannot leave ID before producer Xd time.",
+      "runtime_signals_needed": ["instruction_id", "pc", "opcode", "instruction_class", "rs1", "rs2", "rd", "producer_instruction_id", "raw_wait_cycles"],
+      "existing_trace_fields_available": ["typeId", "rs1", "rs2", "rd", "pc"],
+      "missing_trace_fields": ["instruction_id", "stage enter/exit cycles", "stall_reason", "raw_wait_cycles", "blocking_instruction_id"],
+      "blocking_resource": "register readiness table",
+      "blocking_instruction_available": false,
+      "possible_contribution_formula": "sum(raw_wait_cycles)",
+      "tunable_parameters": [],
+      "suggested_next_instrumentation": ["Record operand ready cycles and producer id in StandardRegisterModel"],
+      "confidence": "high",
+      "open_questions": ["How should rd=0 be handled?"]
+    },
+    {
+      "bottleneck_id": "CV32-BN-002",
+      "bottleneck_name": "Static predict-not-taken branch redirect",
+      "processor": "CV32E40P",
+      "category": "branch",
+      "related_pipeline_stage": ["IF_stage", "ID_stage", "EX_stage"],
+      "related_instruction_classes": ["Branch_Ra_Rb", "jal", "jalr"],
+      "related_code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:67-72", "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/common/StaticBranchPredictModel.cpp:23-54"],
+      "triggering_condition_in_code": "getPc chooses pc_np for taken branch target otherwise pc_p.",
+      "cycle_delay_mechanism": "IF waits on branch predictor PC connector.",
+      "runtime_signals_needed": ["pc", "brTarget", "actual_next_pc", "predicted_pc", "branch_prediction_result", "branch_redirect_penalty"],
+      "existing_trace_fields_available": ["pc", "brTarget", "typeId"],
+      "missing_trace_fields": ["actual_next_pc", "predicted_pc", "branch_prediction_result", "branch_redirect_penalty"],
+      "blocking_resource": "Pc connector",
+      "blocking_instruction_available": false,
+      "possible_contribution_formula": "sum(branch_redirect_penalty)",
+      "tunable_parameters": [],
+      "suggested_next_instrumentation": ["Expose predicted_pc, actual_next_pc, mispredict flag, redirect cycles"],
+      "confidence": "medium",
+      "open_questions": ["Validate branch taken detection semantics with runtime trace."]
+    },
+    {
+      "bottleneck_id": "CV32-BN-003",
+      "bottleneck_name": "Variable divider latency",
+      "processor": "CV32E40P",
+      "category": "functional_unit",
+      "related_pipeline_stage": ["EX_stage"],
+      "related_instruction_classes": ["Div_Ra_Rb", "DivU_Ra_Rb"],
+      "related_code_locations": ["etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerModel.cpp:24-48", "etiss-perf-sim/etiss_plugins/SoftwareEvalLib/libs/backends/libs/externalModels/src/cv32e40p/DividerUnsignedModel.cpp:24-41"],
+      "triggering_condition_in_code": "getDelay computes delay from rs2_data divisor value.",
+      "cycle_delay_mechanism": "DIV/DIVU resource model delay before destination readiness.",
+      "runtime_signals_needed": ["instruction_id", "opcode", "rs2_data", "divider_delay", "EX enter/exit cycles"],
+      "existing_trace_fields_available": ["typeId", "rs1", "rs2", "rd", "pc", "rs2_data"],
+      "missing_trace_fields": ["divider_delay", "stage enter/exit cycles", "stall_reason", "blocking_resource"],
+      "blocking_resource": "DIV or DIVU",
+      "blocking_instruction_available": null,
+      "possible_contribution_formula": "sum(divider_delay - base_EX_latency)",
+      "tunable_parameters": [],
+      "suggested_next_instrumentation": ["Record ResourceModel getDelay result"],
+      "confidence": "high",
+      "open_questions": []
+    },
+    {
+      "bottleneck_id": "CV32-BN-004",
+      "bottleneck_name": "Memory port and LSU structural timing",
+      "processor": "CV32E40P",
+      "category": "memory",
+      "related_pipeline_stage": ["EX_stage", "WB_stage"],
+      "related_instruction_classes": ["Load", "Store"],
+      "related_code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:21-24", "code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:112-113"],
+      "triggering_condition_in_code": "Loads/stores use LSU, DPort_R, and DPort_W resources.",
+      "cycle_delay_mechanism": "Resource and stage serialization; cache/memory wait not modeled explicitly.",
+      "runtime_signals_needed": ["instruction_id", "opcode", "addr", "memory_wait_cycles", "resource_wait_cycles"],
+      "existing_trace_fields_available": ["rs1", "rs2", "rd", "pc"],
+      "missing_trace_fields": ["addr", "cache_hit_or_miss", "memory_wait_cycles", "resource_wait_cycles", "stall_reason"],
+      "blocking_resource": "LSU/DPort_R/DPort_W",
+      "blocking_instruction_available": false,
+      "possible_contribution_formula": "sum(resource_wait_cycles for LSU/DPort)",
+      "tunable_parameters": [],
+      "suggested_next_instrumentation": ["Add effective address and memory/resource wait tracing"],
+      "confidence": "medium",
+      "open_questions": ["No CV32E40P cache model found."]
+    },
+    {
+      "bottleneck_id": "CV32-BN-005",
+      "bottleneck_name": "Multiplier and high-multiplier resource latency",
+      "processor": "CV32E40P",
+      "category": "functional_unit",
+      "related_pipeline_stage": ["EX_stage"],
+      "related_instruction_classes": ["Mul_Ra_Rb", "MulH_Ra_Rb"],
+      "related_code_locations": ["code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:21-23", "code_gen/descriptions/core_perf_dsl/CV32E40P.corePerfDsl:106-107"],
+      "triggering_condition_in_code": "MUL/MULH selected; MULH has static (5) latency in CorePerfDSL.",
+      "cycle_delay_mechanism": "Functional unit latency delays Xd readiness.",
+      "runtime_signals_needed": ["opcode", "instruction_class", "functional_unit_delay", "resource_wait_cycles"],
+      "existing_trace_fields_available": ["typeId", "rs1", "rs2", "rd", "pc"],
+      "missing_trace_fields": ["functional_unit_delay", "resource_wait_cycles", "stage enter/exit cycles"],
+      "blocking_resource": "MUL/MULH",
+      "blocking_instruction_available": null,
+      "possible_contribution_formula": "sum(EX_exit - EX_enter - base_ALU_latency for multiply classes)",
+      "tunable_parameters": ["MULH(5)"],
+      "suggested_next_instrumentation": ["Emit selected functional unit and delay per instruction"],
+      "confidence": "medium",
+      "open_questions": ["Exact generated MUL/MULH timing snippets not separately extracted."]
+    }
+  ]
+}
