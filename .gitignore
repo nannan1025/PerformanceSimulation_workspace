@@ -16,5 +16,6 @@ scripts/test_CVA62.sh
 target_sw/examples/CVA62/
 target_sw/examples/cva6/embench/aha-mont64-test
 target_sw/examples/cva6/embench/aha-mont64.dump
-
+.llm_output/analysis/bottleneck_knowledge/CV32E40P/test/
+.llm_output/analysis/bottleneck_knowledge/CV32E40P/__pycache__/
 
