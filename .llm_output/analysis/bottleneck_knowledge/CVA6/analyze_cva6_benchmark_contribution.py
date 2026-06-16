@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""CV32E40P benchmark-suite timing-trace contribution analyzer.
+"""CVA6 benchmark-suite timing-trace contribution analyzer.
 
 This tool analyzes benchmark folders laid out as:
 
-  trace_output/cv32e40p_bottleneck/<benchmark>/timing/CV32E40P_timing_*.csv
+  trace_output/cva6_bottleneck/<benchmark>/timing/CVA6_timing_*.csv
 
-It reuses the single-directory CV32E40P contribution analyzer for the
+It reuses the single-directory CVA6 contribution analyzer for the
 per-benchmark calculations, then aggregates the results across benchmarks.
 
---output-md .llm_output/analysis/bottleneck_knowledge/CV32E40P/cv32e40p_benchmark_contribution.md
+--output-md .llm_output/analysis/bottleneck_knowledge/CVA6/cva6_benchmark_contribution.md
 
 """
 
@@ -20,7 +20,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from analyze_cv32e40p_contribution import (
+from analyze_cva6_contribution import (
     CATEGORIES,
     AnalysisStats,
     CategoryStats,
@@ -31,7 +31,7 @@ from analyze_cv32e40p_contribution import (
 )
 
 
-DEFAULT_ROOT_DIR = Path("trace_output/cv32e40p_bottleneck")
+DEFAULT_ROOT_DIR = Path("trace_output/cva6_bottleneck")
 
 
 @dataclass
@@ -50,7 +50,10 @@ class SuiteStats:
     aggregate_max_cycle_sum: int = 0
     total_attributed: int = 0
     parse_warnings: Counter[str] = field(default_factory=Counter)
-    memory_port_kind_rows: Counter[str] = field(default_factory=Counter)
+    frontend_wait_type_rows: Counter[str] = field(default_factory=Counter)
+    frontend_wait_type_cycles: Counter[str] = field(default_factory=Counter)
+    ex_subpipe_kind_rows: Counter[str] = field(default_factory=Counter)
+    ex_subpipe_kind_cycles: Counter[str] = field(default_factory=Counter)
     categories: dict[str, CategoryStats] = field(
         default_factory=lambda: {key: CategoryStats() for key in CATEGORIES}
     )
@@ -58,7 +61,7 @@ class SuiteStats:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze CV32E40P timing contribution fields across benchmark folders."
+        description="Analyze CVA6 timing contribution fields across benchmark folders."
     )
     parser.add_argument(
         "--root-dir",
@@ -104,7 +107,16 @@ def benchmark_dirs(root_dir: Path, filters: list[str] | None) -> tuple[list[Path
 
 
 def category_total(stats: AnalysisStats, key: str) -> int:
-    return stats.categories[key].total_cycles
+    category = stats.categories.get(key)
+    return category.total_cycles if category else 0
+
+
+def ex_subpipe_total(stats: AnalysisStats) -> int:
+    return sum(
+        category.total_cycles
+        for key, category in stats.categories.items()
+        if key.startswith("ex_subpipe_")
+    )
 
 
 def benchmark_total(stats: AnalysisStats) -> int:
@@ -117,7 +129,7 @@ def dominant_category(stats: AnalysisStats) -> str:
     key, category = max(stats.categories.items(), key=lambda item: item[1].total_cycles)
     if category.total_cycles == 0:
         return "none"
-    return CATEGORIES[key]["name"]
+    return CATEGORIES.get(key, {"name": key})["name"]
 
 
 def add_category_stats(dst: CategoryStats, src: CategoryStats) -> None:
@@ -136,9 +148,9 @@ def build_suite_stats(root_dir: Path, filters: list[str] | None) -> SuiteStats:
 
     for bench_dir in dirs:
         timing_dir = bench_dir / "timing"
-        timing_files = sorted(timing_dir.glob("CV32E40P_timing_*.csv"))
+        timing_files = sorted(timing_dir.glob("CVA6_timing_*.csv"))
         if not timing_files:
-            suite.skipped.append(f"{bench_dir.name}: no CV32E40P_timing_*.csv files under {timing_dir}")
+            suite.skipped.append(f"{bench_dir.name}: no CVA6_timing_*.csv files under {timing_dir}")
             continue
 
         try:
@@ -153,9 +165,14 @@ def build_suite_stats(root_dir: Path, filters: list[str] | None) -> SuiteStats:
         suite.aggregate_max_cycle_sum += stats.max_pipeline_cycle
         suite.total_attributed += benchmark_total(stats)
         suite.parse_warnings.update(stats.parse_warnings)
-        suite.memory_port_kind_rows.update(stats.memory_port_kind_rows)
+        suite.frontend_wait_type_rows.update(stats.frontend_wait_type_rows)
+        suite.frontend_wait_type_cycles.update(stats.frontend_wait_type_cycles)
+        suite.ex_subpipe_kind_rows.update(stats.ex_subpipe_kind_rows)
+        suite.ex_subpipe_kind_cycles.update(stats.ex_subpipe_kind_cycles)
 
         for key, category in stats.categories.items():
+            if key not in suite.categories:
+                suite.categories[key] = CategoryStats()
             add_category_stats(suite.categories[key], category)
 
     if not suite.benchmark_results:
@@ -166,7 +183,7 @@ def build_suite_stats(root_dir: Path, filters: list[str] | None) -> SuiteStats:
 def render_category_summary(suite: SuiteStats) -> list[str]:
     rows: list[list[str]] = []
     for key, meta in CATEGORIES.items():
-        category = suite.categories[key]
+        category = suite.categories.get(key, CategoryStats())
         rows.append(
             [
                 meta["name"],
@@ -204,11 +221,16 @@ def render_per_benchmark_table(results: list[BenchmarkResult]) -> list[str]:
                 format_int(stats.max_pipeline_cycle),
                 format_int(benchmark_total(stats)),
                 dominant_category(stats),
-                format_int(category_total(stats, "raw")),
                 format_int(category_total(stats, "divider")),
-                format_int(category_total(stats, "branch")),
-                format_int(category_total(stats, "multiplier")),
-                format_int(category_total(stats, "memory_port")),
+                format_int(category_total(stats, "icache")),
+                format_int(category_total(stats, "frontend_cache_block")),
+                format_int(category_total(stats, "frontend_if_capacity")),
+                format_int(category_total(stats, "dcache")),
+                format_int(category_total(stats, "branch_redirect")),
+                format_int(category_total(stats, "raw")),
+                format_int(category_total(stats, "clobber")),
+                format_int(category_total(stats, "commit")),
+                format_int(ex_subpipe_total(stats)),
             ]
         )
     return markdown_table(
@@ -219,11 +241,16 @@ def render_per_benchmark_table(results: list[BenchmarkResult]) -> list[str]:
             "Max cycle",
             "Attributed cycles",
             "Dominant category",
-            "RAW",
             "Divider",
-            "Branch",
-            "Multiplier",
-            "Memory-port",
+            "I-cache",
+            "Frontend cache-block",
+            "Frontend IF-capacity",
+            "D-cache",
+            "Branch redirect",
+            "RAW",
+            "Clobber",
+            "Commit",
+            "EX subpipe total",
         ],
         rows,
     )
@@ -247,32 +274,70 @@ def render_ranking(results: list[BenchmarkResult], label: str, value_fn, top_n: 
     return lines
 
 
-def render_memory_port_notes(results: list[BenchmarkResult]) -> list[str]:
+def render_frontend_wait_notes(results: list[BenchmarkResult]) -> list[str]:
     rows: list[list[str]] = []
     for result in results:
         stats = result.stats
-        memory_cycles = category_total(stats, "memory_port")
-        memory_rows = (
-            stats.memory_port_kind_rows.get("DPort_R", 0)
-            + stats.memory_port_kind_rows.get("DPort_W", 0)
-        )
-        note = "memory rows, zero wait" if memory_rows > 0 and memory_cycles == 0 else ""
         rows.append(
             [
                 result.name,
-                format_int(memory_cycles),
-                format_int(stats.memory_port_kind_rows.get("DPort_R", 0)),
-                format_int(stats.memory_port_kind_rows.get("DPort_W", 0)),
-                note,
+                format_int(stats.frontend_wait_type_cycles.get("cacheBlockWait", 0)),
+                format_int(stats.frontend_wait_type_rows.get("cacheBlockWait", 0)),
+                format_int(stats.frontend_wait_type_cycles.get("ifCapacityWait", 0)),
+                format_int(stats.frontend_wait_type_rows.get("ifCapacityWait", 0)),
+                format_int(stats.frontend_wait_type_cycles.get("pcCorrectWait", 0)),
+                "counted as branch redirect, not frontend",
             ]
         )
-    return markdown_table(["Benchmark", "Memory-port cycles", "DPort_R rows", "DPort_W rows", "Note"], rows)
+    return markdown_table(
+        [
+            "Benchmark",
+            "cacheBlockWait cycles",
+            "cacheBlockWait rows",
+            "ifCapacityWait cycles",
+            "ifCapacityWait rows",
+            "pcCorrectWait cycles",
+            "Note",
+        ],
+        rows,
+    )
+
+
+def render_ex_subpipe_notes(results: list[BenchmarkResult]) -> list[str]:
+    rows: list[list[str]] = []
+    for result in results:
+        stats = result.stats
+        rows.append(
+            [
+                result.name,
+                format_int(ex_subpipe_total(stats)),
+                format_int(stats.ex_subpipe_kind_cycles.get("ALU", 0)),
+                format_int(stats.ex_subpipe_kind_cycles.get("MUL", 0)),
+                format_int(stats.ex_subpipe_kind_cycles.get("DIV", 0)),
+                format_int(stats.ex_subpipe_kind_cycles.get("DIVU", 0)),
+                format_int(stats.ex_subpipe_kind_cycles.get("LOAD", 0)),
+                format_int(stats.ex_subpipe_kind_cycles.get("STORE", 0)),
+            ]
+        )
+    return markdown_table(
+        [
+            "Benchmark",
+            "EX subpipe total",
+            "ALU",
+            "MUL",
+            "DIV",
+            "DIVU",
+            "LOAD",
+            "STORE",
+        ],
+        rows,
+    )
 
 
 def render_report(root_dir: Path, suite: SuiteStats, top_n: int) -> str:
     results = sorted(suite.benchmark_results, key=lambda result: result.name)
     lines: list[str] = []
-    lines.append("# CV32E40P Benchmark-Suite Delay Contribution Summary")
+    lines.append("# CVA6 Benchmark-Suite Delay Contribution Summary")
     lines.append("")
     lines.append("## Input Summary")
     lines.append("")
@@ -314,9 +379,14 @@ def render_report(root_dir: Path, suite: SuiteStats, top_n: int) -> str:
             )
         )
 
-    lines.append("## Memory-Port Notes")
+    lines.append("## Frontend Wait Notes")
     lines.append("")
-    lines.extend(render_memory_port_notes(results))
+    lines.extend(render_frontend_wait_notes(results))
+    lines.append("")
+
+    lines.append("## EX Subpipe Notes")
+    lines.append("")
+    lines.extend(render_ex_subpipe_notes(results))
     lines.append("")
 
     lines.append("## Parse Warnings")
@@ -333,10 +403,13 @@ def render_report(root_dir: Path, suite: SuiteStats, top_n: int) -> str:
 
     lines.append("## Interpretation Notes")
     lines.append("")
-    lines.append("- These totals are additive instrumentation-field sums, not a de-overlapped CPI stack.")
+    lines.append("- These totals are additive instrumentation-field sums, not critical-path analysis and not a de-overlapped CPI stack.")
     lines.append("- A single instruction row can contribute to more than one category.")
     lines.append("- Per-benchmark totals are independent benchmark summaries; the whole-suite summary adds those independent totals.")
-    lines.append("- Memory-port cycles are DPort/WB-stage structural wait only, not cache or external memory latency.")
+    lines.append("- `frontend_wait_type=pcCorrectWait` is not counted as frontend wait because branch redirect is counted through `branch_redirect_cycles`.")
+    lines.append("- Frontend cache-block and IF-capacity waits are intentionally reported as separate categories.")
+    lines.append("- EX subpipe wait is split by `ex_subpipe_kind`; rows with `ex_subpipe_kind=none` do not contribute.")
+    lines.append("- Commit wait uses `commit_wait_cycles` as one total category; this report does not split backpressure and capacity into separate contribution categories.")
     lines.append("")
 
     return "\n".join(lines)
