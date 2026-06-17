@@ -1,0 +1,377 @@
+/***** Microaction Section *****/ 
+
+Connector {Pc, Pc_np, Pc_p} 
+
+Connector {Xa, Xb, Xd} 
+
+  
+
+Resource {PCGen, Instruction_Fetch, Decoder, RVC_Decoder, Aligner, ALU, LSU, CSR, JumpDecoder} 
+
+Resource {MUL(1), DIV(divider), DIVU(divider_u), MULH(5)} 
+
+Resource {IPort_R, DPort_R, DPort_W, RegWrite} 
+
+  
+
+Microaction { 
+
+  uA_IFetch        (Pc -> IPort_R), 
+
+  uA_PCGen         (PCGen -> Pc_p), 
+
+  uA_Aligner       (Aligner), 
+
+  uA_RVCDecode     (RVC_Decoder), 
+
+  uA_Decode        (Decoder), 
+
+  uA_OF_A          (Xa), 
+
+  uA_OF_B          (Xb), 
+
+  uA_ALU_RegUpdate (ALU -> Xd), 
+
+  uA_ALU_Branch    (ALU -> Pc_np), 
+
+  uA_MUL           (MUL -> Xd), 
+
+  uA_MULH          (MULH -> Xd), 
+
+  uA_DIV           (DIV -> Xd), 
+
+  uA_DIVU          (DIVU -> Xd), 
+
+  uA_LSU           (LSU), 
+
+  uA_CSR           (CSR -> Xd), 
+
+  uA_Memory_R      (DPort_R -> Xd), 
+
+  uA_Memory_W      (DPort_W), 
+
+  uA_RegWrite      (RegWrite), 
+
+  uA_JumpDecode    (JumpDecoder -> Pc_np), 
+
+  uA_JumpDecodeReg (Xa -> JumpDecoder -> Pc_np) // Corrected: jalr needs rs1 input 
+
+} 
+
+  
+
+/***** Stages & Pipeline *****/ 
+
+  
+
+Stage { 
+
+  Instruction_Fetch (uA_IFetch, uA_PCGen, uA_Aligner, uA_RVCDecode), 
+
+  Instruction_Decode (uA_Decode, uA_OF_A, uA_OF_B, uA_JumpDecode, uA_JumpDecodeReg), 
+
+  Execute (uA_ALU_RegUpdate, uA_ALU_Branch, uA_MUL, uA_MULH, uA_DIV, uA_DIVU, uA_LSU, uA_CSR), 
+
+  Writeback (uA_RegWrite, uA_Memory_R, uA_Memory_W) 
+
+} 
+
+  
+
+Pipeline CV32E40P_LLM_pipeline (Instruction_Fetch -> Instruction_Decode -> Execute -> Writeback) 
+
+  
+
+/***** External Models *****/ 
+
+TraceValue {rs1, rs2, rd, pc, brTarget, rs2_data} 
+
+  
+
+ConnectorModel regModel ( 
+
+  link : "models/common/StandardRegisterModel.h" 
+
+  trace : {rs1, rs2, rd} 
+
+  connectorIn : Xd 
+
+  connectorOut : {Xa, Xb} 
+
+) 
+
+  
+
+ConnectorModel branchPredModel ( 
+
+  link : "models/common/StaticBranchPredictModel.h" 
+
+  trace : {pc, brTarget} 
+
+  connectorIn : {Pc_np, Pc_p} 
+
+  connectorOut : Pc 
+
+) 
+
+  
+
+ResourceModel iMemModel ( 
+
+  link: "models/common/DummyMemoryModel.h" 
+
+) 
+
+  
+
+ResourceModel dMemModel ( 
+
+  link: "models/common/DummyMemoryModel.h" 
+
+) 
+
+  
+
+ResourceModel divider ( 
+
+  link: "models/cv32e40p/DividerModel.h" 
+
+  trace: rs2_data 
+
+) 
+
+  
+
+ResourceModel divider_u ( 
+
+  link: "models/cv32e40p/DividerUnsignedModel.h" 
+
+  trace: rs2_data 
+
+) 
+
+  
+
+/***** Instruction Section *****/ 
+
+InstrGroup { 
+
+  Arith_Ra_Rb (add, sub, xor, or, and, slt, sltu, sll, srl, sra), 
+
+  Arith_Ra (addi, xori, ori, andi, slti, sltiu, slli, srli, srai), 
+
+  Arith_X (auipc, lui), 
+
+  Mul_Ra_Rb (mul), 
+
+  MulH_Ra_Rb (mulh, mulhu, mulhsu), 
+
+  Div_Ra_Rb (div, rem), 
+
+  DivU_Ra_Rb (divu, remu), 
+
+  Csr_Ra (csrrw, csrrs, csrrc), 
+
+  Csr_X (csrrwi, csrrsi, csrrci), 
+
+  Store (sb, sh, sw), 
+
+  Load (lw, lh, lhu, lb, lbu), 
+
+  Branch_Ra_Rb (beq, bne, blt, bge, bltu, bgeu), 
+
+  jal (jal), 
+
+  jalr (jalr), 
+
+  Default ([?]) 
+
+} 
+
+  
+
+MicroactionMapping { 
+
+  [ALL] :        {uA_IFetch, uA_PCGen, uA_Aligner,uA_RVCDecode}, 
+
+  Arith_Ra_Rb :  {uA_Decode, uA_OF_A, uA_OF_B, uA_ALU_RegUpdate}, 
+
+  Arith_Ra :     {uA_Decode, uA_OF_A, uA_ALU_RegUpdate}, 
+
+  Arith_X :      {uA_Decode, uA_ALU_RegUpdate}, 
+
+  Mul_Ra_Rb :    {uA_Decode, uA_OF_A, uA_OF_B, uA_MUL}, 
+
+  MulH_Ra_Rb :   {uA_Decode, uA_OF_A, uA_OF_B, uA_MULH}, 
+
+  Div_Ra_Rb :    {uA_Decode, uA_OF_A, uA_OF_B, uA_DIV}, 
+
+  DivU_Ra_Rb :   {uA_Decode, uA_OF_A, uA_OF_B, uA_DIVU}, 
+
+  Csr_Ra :       {uA_Decode, uA_OF_A, uA_CSR}, 
+
+  Csr_X :        {uA_Decode, uA_CSR}, 
+
+  Store :        {uA_Decode, uA_OF_A, uA_OF_B, uA_LSU, uA_Memory_W}, 
+
+  Load :         {uA_Decode, uA_OF_A, uA_LSU, uA_Memory_R}, 
+
+  Branch_Ra_Rb : {uA_Decode, uA_OF_A, uA_OF_B, uA_ALU_Branch}, 
+
+  jal :          {uA_Decode, uA_JumpDecode, uA_ALU_RegUpdate}, 
+
+  jalr :         {uA_Decode, uA_OF_A, uA_JumpDecodeReg, uA_ALU_RegUpdate} 
+
+} 
+
+  
+
+TraceValueMapping { 
+
+  [ALL] : { 
+
+      pc = "$resolved{$pc}" 
+
+  }, 
+
+  Arith_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Arith_Ra : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Arith_X : { 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Mul_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  MulH_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Div_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    rd  = "$bitfield{rd}", 
+
+    rs2_data = "$reg{$bitfield{rs2}}" 
+
+  }, 
+
+  DivU_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    rd  = "$bitfield{rd}", 
+
+    rs2_data = "$reg{$bitfield{rs2}}" 
+
+  }, 
+
+  Csr_Ra : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Csr_X : { 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Store : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}" 
+
+  }, 
+
+  Load : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rd  = "$bitfield{rd}" 
+
+  }, 
+
+  Branch_Ra_Rb : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rs2 = "$bitfield{rs2}", 
+
+    brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}" 
+
+  }, 
+
+  jal : { 
+
+    rd = "$bitfield{rd}", 
+
+    brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}" 
+
+  }, 
+
+  jalr : { 
+
+    rs1 = "$bitfield{rs1}", 
+
+    rd  = "$bitfield{rd}", 
+
+    brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U" 
+
+  } 
+
+} 
+
+  
+
+/***** Variants *****/ 
+
+CorePerfModel CV32E40P_LLM ( 
+
+  core : "RV32IMACFD" 
+
+  use Pipeline : CV32E40P_LLM_pipeline 
+
+  use ConnectorModel : {regModel, branchPredModel} 
+
+) 

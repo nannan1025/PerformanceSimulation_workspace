@@ -1,0 +1,160 @@
+/**** Microaction Section ****/
+Connector {Pc, Pc_np, Pc_p}
+Connector {Xa, Xb, Xd}
+
+Resource {PCGen, Decoder, Instruction_Issue, ALU, MUL, LSU, CSR, Reg, IPort_R(iMemModel), DPort_R(dMemModel), DPort_W(dMemModel)}
+
+Microaction {
+  uA_IFetch          (Pc -> IPort_R),
+  uA_PCGen           (Pc -> PCGen -> Pc_p),
+  uA_Decode          (Decoder),
+  uA_ImmJumpDecode   (Decoder),
+  uA_RegJumpDecode   (Decoder),
+  uA_OperandFetch_A  (Xa),
+  uA_OperandFetch_B  (Xb),
+  uA_InstructionIssue (Instruction_Issue),
+  uA_ALU_Exec        (ALU),
+  uA_Branch_Target   (ALU -> Pc_np),
+  uA_CSR_Exec        (CSR),
+  uA_Mem_Addr_Calc   (ALU),
+  uA_MUL_Exec        (MUL),
+  uA_MULH_Exec       (MUL),
+  uA_Mem_R           (DPort_R -> Xd),
+  uA_Mem_W           (DPort_W),
+  uA_WB              (Reg)
+}
+
+/***** Stages & Pipeline ****/
+
+Stage {
+  IF_stage (uA_IFetch, uA_PCGen),
+  ID_stage (uA_Decode, uA_ImmJumpDecode, uA_RegJumpDecode),
+  IS_stage (uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue),
+  EX_stage (uA_ALU_Exec, uA_Branch_Target, uA_CSR_Exec, uA_Mem_Addr_Calc, uA_MUL_Exec, uA_MULH_Exec),
+  MEM_stage (uA_Mem_R, uA_Mem_W),
+  WB_stage (uA_WB)
+}
+
+Pipeline SIX_NFW_SPRE_Pipeline (IF_stage -> ID_stage -> IS_stage -> EX_stage -> MEM_stage -> WB_stage)
+
+/***** External Models ****/
+TraceValue {rs1, rs2, rd, pc, brTarget}
+
+ConnectorModel regModel (
+  link : "models/common/StandardRegisterModel.h"
+  trace : {rs1, rs2, rd}
+  connectorIn : Xd
+  connectorOut : {Xa, Xb}
+)
+
+ConnectorModel staticBranchPredModel (
+    link : "models/common/StaticBranchPredictModel.h"
+    trace : {pc, brTarget}
+    connectorIn : {Pc_p, Pc_np}
+    connectorOut : Pc
+)
+
+ResourceModel iMemModel (
+  link : "models/common/DummyMemoryModel.h"
+)
+
+ResourceModel dMemModel (
+  link : "models/common/DummyMemoryModel.h"
+)
+
+/**** Instruction Section ****/
+InstrGroup {
+  Default ([?]),
+  Arith_X (auipc, lui),
+  Arith_Ra (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, addiw, slliw, srliw, sraiw),
+  Arith_Ra_Rb (add, sub, xor, or, and, slt, sltu, sll, srl, sra, addw, subw, sllw, srlw, sraw),
+  Mul_Ra_Rb (mul, mulw),
+  MulH_Ra_Rb (mulh, mulhu, mulhsu),
+  Csr_Ra (csrrw, csrrs, csrrc),
+  Csr_X (csrrwi, csrrsi, csrrci),
+  Load (lb, lbu, lh, lhu, lw, lwu, ld),
+  Store (sb, sh, sw, sd),
+  Branch_Ra_Rb (beq, bne, blt, bge, bltu, bgeu),
+  Jump (jal),
+  JumpR (jalr)
+}
+
+MicroactionMapping {
+  [ALL] :        {uA_IFetch, uA_PCGen},
+  Arith_X :      {uA_Decode, uA_InstructionIssue, uA_ALU_Exec, uA_WB},
+  Arith_Ra :     {uA_Decode, uA_OperandFetch_A, uA_InstructionIssue, uA_ALU_Exec, uA_WB},
+  Arith_Ra_Rb :  {uA_Decode, uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue, uA_ALU_Exec, uA_WB},
+  Mul_Ra_Rb :    {uA_Decode, uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue, uA_MUL_Exec, uA_WB},
+  MulH_Ra_Rb :   {uA_Decode, uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue, uA_MULH_Exec, uA_WB},
+  Csr_Ra :       {uA_Decode, uA_OperandFetch_A, uA_InstructionIssue, uA_CSR_Exec, uA_WB},
+  Csr_X :        {uA_Decode, uA_InstructionIssue, uA_CSR_Exec, uA_WB},
+  Load :         {uA_Decode, uA_OperandFetch_A, uA_InstructionIssue, uA_Mem_Addr_Calc, uA_Mem_R, uA_WB},
+  Store :        {uA_Decode, uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue, uA_Mem_Addr_Calc, uA_Mem_W},
+  Branch_Ra_Rb : {uA_Decode, uA_OperandFetch_A, uA_OperandFetch_B, uA_InstructionIssue, uA_Branch_Target},
+  Jump :         {uA_ImmJumpDecode, uA_InstructionIssue, uA_Branch_Target, uA_WB},
+  JumpR :        {uA_OperandFetch_A, uA_RegJumpDecode, uA_InstructionIssue, uA_Branch_Target, uA_WB}
+}
+
+TraceValueMapping {
+  [ALL] : {
+      pc = "$resolved{$pc}"
+  },
+  Arith_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Arith_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Arith_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Mul_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  MulH_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Csr_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Csr_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Load : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Store : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}"
+  },
+  Branch_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}"
+  },
+  Jump : {
+    rd = "$bitfield{rd}",
+    brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}"
+  },
+  JumpR : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U"
+  }
+}
+
+/**** Variants ****/
+CorePerfModel SIX_NFW_SPRE (
+  core : "RV64IMACFD"
+  use Pipeline : SIX_NFW_SPRE_Pipeline
+  use ConnectorModel : {staticBranchPredModel, regModel}
+)

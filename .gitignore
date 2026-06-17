@@ -8,13 +8,15 @@ code_gen/temp
 *.c
 *.o 
 *.so
-llm_output/
 trace_output/
+target_sw/
 scripts/test_CV32E40P_LLM.sh
 scripts/test_CVA6.sh
 scripts/test_CVA62.sh
 target_sw/examples/CVA62/
 target_sw/examples/cva6/embench/aha-mont64-test
 target_sw/examples/cva6/embench/aha-mont64.dump
+.llm_output/analysis/bottleneck_knowledge
+
 
 

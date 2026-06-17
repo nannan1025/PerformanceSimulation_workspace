@@ -1,0 +1,166 @@
+/**** Microaction Section ****/
+Connector {Pc, Pc_p, Pc_np}
+Connector {Xa, Xb, Xd}
+
+Resource {PCGen, Decoder, Reg, ALU, MUL, LSU, Branch_ALU, PCUpdater}
+Resource {DIV(divider), DIVU(divider_u)}
+Resource {IPort_R(iMemModel), DPort_R(dMemModel), DPort_W(dMemModel)}
+
+Microaction {
+    uA_IF_fetch (Pc -> IPort_R),
+    uA_PC_GEN (Pc -> PCGen -> Pc_p),
+    uA_ID_decode (Decoder),
+    uA_OF_A (Xa),
+    uA_OF_B (Xb),
+    uA_ALU_arith (ALU -> Xd),
+    uA_MUL (MUL -> Xd),
+    uA_DIV (DIV -> Xd),
+    uA_DIVU (DIVU -> Xd),
+    uA_LSU_mem (LSU),
+    uA_Branch_ALU (Branch_ALU -> Pc_np),
+    uA_MEM_R (DPort_R -> Xd),
+    uA_MEM_W (DPort_W),
+    uA_PC_Update_on_Branch (Pc -> PCUpdater -> Pc_np),
+    uA_WB (Reg)
+}
+
+/***** Stages & Pipeline ****/
+Stage {
+    IF (uA_IF_fetch, uA_PC_GEN),
+    ID (uA_ID_decode, uA_OF_A, uA_OF_B),
+    EX (uA_ALU_arith, uA_MUL, uA_DIV, uA_DIVU, uA_LSU_mem, uA_Branch_ALU),
+    MEM (uA_MEM_R, uA_MEM_W, uA_PC_Update_on_Branch),
+    WB (uA_WB)
+}
+Pipeline LAMP_pipeline (IF -> ID -> EX -> MEM -> WB)
+
+/***** External Models ****/
+TraceValue {rs1, rs2, rd, pc, brTarget, rs2_data}
+
+ConnectorModel regModel (
+    link : "models/common/StandardRegisterModel.h"
+    trace : {rs1, rs2, rd}
+    connectorIn : Xd
+    connectorOut : {Xa, Xb}
+)
+
+ConnectorModel dyBranchPredModel (
+    link : "models/common/DynamicBranchPredictModel.h"
+    trace : {pc, brTarget}
+    connectorIn : {Pc_p, Pc_np}
+    connectorOut : Pc
+)
+
+ResourceModel divider (
+    link: "models/cv32e40p/DividerModel.h"
+    trace: rs2_data
+)
+
+ResourceModel divider_u (
+    link: "models/cv32e40p/DividerUnsignedModel.h"
+    trace: rs2_data
+)
+
+ResourceModel iMemModel (
+    link : "models/common/DummyMemoryModel.h"
+)
+
+ResourceModel dMemModel (
+    link : "models/common/DummyMemoryModel.h"
+)
+
+/**** Instruction Section ****/
+
+InstrGroup {
+    Default ([?]),
+    Arith_0 (auipc, lui, csrrsi, csrrci),
+    Arith_Rs1 (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, csrrw, csrrs, csrrc),
+    Arith_Rs1_Rs2 (add, sub, xor, or, and, slt, sltu, sll, srl, sra),
+    Branch (beq, bne, blt, bge, bltu, bgeu),
+    Jump (jal),
+    JumpR (jalr),
+    Mul (mul, mulh, mulhu, mulhsu),
+    Div (div, rem),
+    DivU (divu, remu),
+    Load (lh, lhu, lb, lbu, lw),
+    Store (sb, sh, sw)
+}
+
+MicroactionMapping {
+    [ALL] : {uA_IF_fetch, uA_PC_GEN, uA_ID_decode},
+    Arith_0 : {uA_ALU_arith, uA_WB},
+    Arith_Rs1 : {uA_OF_A, uA_ALU_arith, uA_WB},
+    Arith_Rs1_Rs2 : {uA_OF_A, uA_OF_B, uA_ALU_arith, uA_WB},
+    Mul : {uA_OF_A, uA_OF_B, uA_MUL, uA_WB},
+    Div : {uA_OF_A, uA_OF_B, uA_DIV, uA_WB},
+    DivU : {uA_OF_A, uA_OF_B, uA_DIVU, uA_WB},
+    Store : {uA_OF_A, uA_OF_B, uA_LSU_mem, uA_MEM_W},
+    Load : {uA_OF_A, uA_LSU_mem, uA_MEM_R, uA_WB},
+    Branch : {uA_OF_A, uA_OF_B, uA_Branch_ALU, uA_PC_Update_on_Branch},
+    Jump : {uA_ALU_arith, uA_PC_Update_on_Branch, uA_WB},
+    JumpR : {uA_OF_A, uA_ALU_arith, uA_PC_Update_on_Branch, uA_WB}
+}
+
+TraceValueMapping {
+    [ALL] : {
+        pc = "$resolved{$pc}"
+    },
+    Arith_0 : {
+        rd = "$bitfield{rd}"
+    },
+    Arith_Rs1 : {
+        rs1 = "$bitfield{rs1}",
+        rd  = "$bitfield{rd}"
+    },
+    Arith_Rs1_Rs2 : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}"
+    },
+    Mul : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}"
+    },
+    Div : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}",
+        rs2_data = "$reg{$bitfield{rs2}}"
+    },
+    DivU : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}",
+        rs2_data = "$reg{$bitfield{rs2}}"
+    },
+    Branch : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}"
+    },
+    Jump : {
+        rd = "$bitfield{rd}",
+        brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}"
+    },
+    JumpR : {
+        rs1 = "$bitfield{rs1}",
+        rd = "$bitfield{rd}",
+        brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U"
+    },
+    Load : {
+        rs1 = "$bitfield{rs1}",
+        rd  = "$bitfield{rd}"
+    },
+    Store : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}"
+   }
+}
+
+/**** Variants ****/
+CorePerfModel LAMP (
+    core : "RV32IMACFD"
+    use Pipeline : LAMP_pipeline
+    use ConnectorModel : {dyBranchPredModel, regModel}
+)

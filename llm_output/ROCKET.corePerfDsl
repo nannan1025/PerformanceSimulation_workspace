@@ -1,0 +1,204 @@
+/***** Microaction Section *****/
+Connector {Pc, Pc_np, Pc_p}
+Connector {Xa, Xb, Xd}
+Connector {Ic_in, Ic_out}
+
+Resource {PC_Gen, CSR, Decoder, ALU, Branch, MUL(5), Reg}
+Resource {DIV(divider), DIVU(divider_u)}
+Resource {ICache(iCacheModel)}
+Resource {LCtrl, DCache(dCacheModel), LUnit}
+Resource {SCtrl, SUnit}
+Resource {pip}
+
+Microaction {
+  uA_PCGen         (Pc -> PC_Gen -> Pc_p),
+  uA_CacheBlock    (Ic_out),
+  uA_ICache        (ICache -> Ic_in),
+  uA_Decode        (Decoder),
+  uA_OF_A          (Xa),
+  uA_OF_B          (Xb),
+  uA_ALU_arith     (ALU),
+  uA_ALU_branch    (Branch -> Pc_np),
+  uA_CSR           (CSR),
+  uA_MUL           (MUL),
+  uA_DIV           (DIV),
+  uA_DIVU          (DIVU),
+  uA_LCtrl         (LCtrl),
+  uA_DCache        (DCache),
+  uA_LUnit         (LUnit -> Xd),
+  uA_SCtrl         (SCtrl),
+  uA_SUnit         (SUnit),
+  uA_pip           (pip),
+  uA_RegWriteBack  (Reg)
+}
+
+/***** Stages & Pipeline *****/
+
+Stage {
+  PC    (uA_PCGen, uA_CacheBlock),
+  IF    (uA_ICache),
+  ID    (uA_Decode, uA_OF_A, uA_OF_B),
+  EX    (uA_ALU_arith, uA_ALU_branch, uA_MUL, uA_DIV, uA_DIVU, uA_CSR, uA_LCtrl, uA_SCtrl),
+  MEM   (uA_LUnit, uA_DCache, uA_pip),
+  WB    (uA_RegWriteBack)
+}
+
+Pipeline ROCKET_pipeline (PC -> IF -> ID -> EX -> MEM -> WB)
+
+/***** External Models *****/
+TraceValue {rs1, rs2, rd, pc, brTarget, rs1_data, rs2_data, addr}
+
+Model iCacheModel(
+    link : "models/rocket/ICacheModel.h"
+    trace : {pc}
+    connectorIn : {Ic_in}
+    connectorOut : {Ic_out}    
+)
+
+ConnectorModel regModel (
+  link : "models/common/StandardRegisterModel.h"
+  trace : {rs1, rs2, rd}
+  connectorIn : Xd
+  connectorOut : {Xa, Xb}
+)
+
+ConnectorModel dyBranchPredModel (
+  link : "models/common/DynamicBranchPredictModel.h"
+  trace : {pc, brTarget}
+  connectorIn : {Pc_p, Pc_np}
+  connectorOut : Pc
+)
+
+ResourceModel divider (
+  link: "models/cva6/DividerModel.h"
+  trace: {rs1_data, rs2_data}
+)
+
+ResourceModel divider_u (
+  link: "models/cva6/DividerUnsignedModel.h"
+  trace: {rs1_data, rs2_data}
+)
+
+
+ResourceModel dCacheModel (
+    link: "models/rocket/DCacheModel.h"
+    trace : addr
+)
+
+/***** Instruction Section *****/
+InstrGroup {
+  Arith_Ra_Rb (add, sub, xor, or, and, slt, sltu, sll, srl, sra, addw, subw),
+  Arith_Ra (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, addiw, slliw, sraiw, srliw),
+  Arith_X (auipc, lui),
+  Mul_Ra_Rb (mul, mulw),
+  MulH_Ra_Rb (mulh, mulhu, mulhsu),
+  Div_Ra_Rb (div, rem, divw, remw),
+  DivU_Ra_Rb (divu, remu, divuw, remuw),
+  Csr_Ra (csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci),
+  Csr_X (csrrwi, csrrsi, csrrci),
+  Store (sb, sh, sw, sd),
+  Load (lb, lbu, lh, lhu, lw, ld, lwu),
+  Branch_Ra_Rb (beq, bne, blt, bge, bltu, bgeu),
+  Jump (jal),
+  JumpR (jalr),
+  Default ([?])
+}
+
+
+MicroactionMapping {
+  [ALL] :        {uA_PCGen, uA_CacheBlock, uA_ICache, uA_Decode},
+  Arith_Ra_Rb :  {uA_OF_A, uA_OF_B, uA_ALU_arith, uA_pip, uA_RegWriteBack},
+  Arith_Ra :     {uA_OF_A, uA_ALU_arith, uA_pip, uA_RegWriteBack},
+  Arith_X :      {uA_ALU_arith, uA_pip, uA_RegWriteBack},
+  Mul_Ra_Rb :    {uA_OF_A, uA_OF_B, uA_MUL, uA_pip, uA_RegWriteBack},
+  MulH_Ra_Rb :   {uA_OF_A, uA_OF_B, uA_MUL, uA_pip, uA_RegWriteBack},
+  Div_Ra_Rb :    {uA_OF_A, uA_OF_B, uA_DIV, uA_pip, uA_RegWriteBack},
+  DivU_Ra_Rb :   {uA_OF_A, uA_OF_B, uA_DIVU,  uA_pip, uA_RegWriteBack},
+  Csr_Ra :       {uA_OF_A, uA_CSR, uA_pip, uA_RegWriteBack},
+  Csr_X :        {uA_CSR, uA_pip, uA_RegWriteBack},
+  Store :        {uA_OF_A, uA_OF_B, uA_pip, uA_SCtrl, uA_DCache},
+  Load :         {uA_OF_A, uA_LCtrl, uA_DCache, uA_LUnit, uA_RegWriteBack},
+  Branch_Ra_Rb : {uA_OF_A, uA_OF_B, uA_ALU_branch, uA_pip, uA_pip},
+  Jump :         {uA_ALU_arith, uA_pip, uA_RegWriteBack},
+  JumpR :        {uA_OF_A, uA_ALU_arith, uA_pip, uA_RegWriteBack}
+}
+
+TraceValueMapping {
+  [ALL] : {
+      pc = "$resolved{$pc}"
+  },
+  Arith_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Arith_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Arith_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Mul_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  MulH_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Div_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs1_data = "$reg{$bitfield{rs1}}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+  DivU_Ra_Rb: {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs1_data = "$reg{$bitfield{rs1}}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+  Csr_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Csr_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Store : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    addr = "($reg{$bitfield{rs1}} + $bitfield{imm})"
+  },
+  Load : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    addr = "($reg{$bitfield{rs1}} + $bitfield{imm})"
+  },
+  Branch_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}"
+  },
+  Jump : {
+    rd = "$bitfield{rd}",
+    brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}"
+  },
+  JumpR : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U"
+  }
+}
+
+/***** Variants *****/
+CorePerfModel ROCKET (
+  core : "RV64IMACFD"
+  use Pipeline : ROCKET_pipeline
+  use ConnectorModel : {dyBranchPredModel, regModel, iCacheModel}
+)

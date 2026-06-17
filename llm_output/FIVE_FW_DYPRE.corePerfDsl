@@ -1,0 +1,139 @@
+/**** Microaction Section ****/
+Connector {Pc, Pc_p, Pc_np}
+Connector {Xa, Xb, Xd}
+
+Resource {PC_Gen, Decoder, ALU, Multi, Reg, DPort_W(dMemModel), DPort_R(dMemModel), IPort_R(iMemModel)}
+
+// General Microactions
+Microaction {
+    uA_IF (Pc -> IPort_R),
+    uA_PC_GEN (Pc -> PC_Gen -> Pc_p),
+    uA_ID (Decoder),
+    uA_OF_A (Xa),
+    uA_OF_B (Xb),
+    uA_ALU_branch (ALU -> Pc_np),
+    uA_ALU_mem (ALU),
+    uA_MEM_W (DPort_W),
+    uA_ALU_arith_fw (ALU -> Xd),
+    uA_MUL_fw (Multi -> Xd),
+    uA_MEM_R_fw (DPort_R -> Xd),
+    uA_WB_fw (Reg)
+}
+
+
+/***** Stages & Pipeline ****/
+Stage {
+    IF_stage (uA_IF, uA_PC_GEN),
+    ID_stage (uA_ID, uA_OF_A, uA_OF_B),
+    EX_stage (uA_ALU_arith_fw, uA_MUL_fw, uA_ALU_branch, uA_ALU_mem),
+    MEM_stage (uA_MEM_R_fw, uA_MEM_W),
+    WB_stage (uA_WB_fw)
+}
+Pipeline Five_fw_dyPre (IF_stage -> ID_stage -> EX_stage -> MEM_stage -> WB_stage)
+
+/***** External Models ****/
+TraceValue {rs1, rs2, rd, pc, brTarget}
+
+ConnectorModel regModel (
+    link : "models/common/StandardRegisterModel.h"
+    trace : {rs1, rs2, rd}
+    connectorIn : Xd
+    connectorOut : {Xa, Xb}
+)
+
+ConnectorModel dyBranchPredModel (
+    link : "models/common/DynamicBranchPredictModel.h"
+    trace : {pc, brTarget}
+    connectorIn : {Pc_p, Pc_np}
+    connectorOut : Pc
+)
+
+ResourceModel iMemModel (
+    link : "models/common/DummyMemoryModel.h"
+)
+
+ResourceModel dMemModel (
+    link : "models/common/DummyMemoryModel.h"
+)
+
+
+/**** Instruction Section ****/
+
+InstrGroup {
+    Default ([?]),
+    Arith_0 (auipc, lui, csrrsi, csrrci),
+    Arith_Rs1 (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, csrrw, csrrs, csrrc),
+    Arith_Rs1_Rs2 (add, sub, xor, or, and, slt, sltu, sll, srl, sra),
+    Branch (beq, bne, blt, bge, bltu, bgeu),
+    Jump (jal),
+    JumpR (jalr),
+    Mul (mul, mulh, mulhu, mulhsu),
+    Load (lh, lhu, lb, lbu),
+    Store (sb, sh)
+}
+
+MicroactionMapping {
+    [ALL] : {uA_IF, uA_PC_GEN, uA_ID},
+    Arith_0 : {uA_ALU_arith_fw, uA_WB_fw},
+    Arith_Rs1_Rs2 : {uA_OF_A, uA_OF_B, uA_ALU_arith_fw, uA_WB_fw},
+    Arith_Rs1 : {uA_OF_A, uA_ALU_arith_fw, uA_WB_fw},
+    Mul : {uA_OF_A, uA_OF_B, uA_MUL_fw, uA_WB_fw},
+    Store : {uA_OF_A, uA_OF_B, uA_ALU_mem, uA_MEM_W},
+    Load : {uA_OF_A, uA_ALU_mem, uA_MEM_R_fw, uA_WB_fw},
+    Branch : {uA_OF_A, uA_OF_B, uA_ALU_branch, uA_WB_fw},
+    Jump : {uA_ALU_arith_fw, uA_WB_fw},
+    JumpR : {uA_OF_A, uA_ALU_arith_fw, uA_WB_fw}
+}
+
+TraceValueMapping {
+    [ALL] : {
+        pc = "$resolved{$pc}"
+    },
+    Arith_0 : {
+        rd = "$bitfield{rd}"
+    },
+    Arith_Rs1 : {
+        rs1 = "$bitfield{rs1}",
+        rd  = "$bitfield{rd}"
+    },
+    Arith_Rs1_Rs2 : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}"
+    },
+    Mul : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}"
+    },
+    Branch : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}"
+    },
+    Jump : {
+        rd = "$bitfield{rd}",
+        brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}"
+    },
+    JumpR : {
+        rs1 = "$bitfield{rs1}",
+        rd = "$bitfield{rd}",
+        brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U"
+    },
+    Load : {
+        rs1 = "$bitfield{rs1}",
+        rd  = "$bitfield{rd}"
+    },
+    Store : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}"
+   }
+}
+
+/**** Variants ****/
+CorePerfModel FIVE_FW_DYPRE (
+    core : "RV32IMACFD"
+    use Pipeline : Five_fw_dyPre
+    use ConnectorModel : {dyBranchPredModel, regModel}
+)
+

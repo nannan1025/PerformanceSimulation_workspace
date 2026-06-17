@@ -1,0 +1,178 @@
+/***** Microaction Section *****/
+Connector {Pc, Pc_np, Pc_p}
+Connector {Xa, Xb, Xd}
+
+Resource {PC_Gen, Decoder, ALU, MUL, LSU, Reg}
+Resource {DIV(divider), DIVU(divider_u)}
+Resource {IPort_R, DPort_R, DPort_W}
+
+Microaction {
+  uA_PCGen         (Pc -> PC_Gen -> Pc_p),
+  uA_IFetch        (Pc -> IPort_R),
+  uA_Decode        (Decoder),
+  uA_OF_A          (Xa),
+  uA_OF_B          (Xb),
+  uA_ALU_arith     (ALU -> Xd),
+  uA_ALU_branch    (ALU -> Pc_np),
+  uA_ALU_mem       (ALU),
+  uA_MUL           (MUL -> Xd),
+  uA_DIV           (DIV -> Xd),
+  uA_DIVU          (DIVU -> Xd),
+  uA_LSU           (LSU),
+  uA_Memory_R      (DPort_R -> Xd),
+  uA_Memory_W      (DPort_W),
+  uA_RegWriteBack  (Reg)
+}
+
+/***** Stages & Pipeline *****/
+
+Stage {
+  PCGEN (uA_PCGen),
+  IF    (uA_IFetch),
+  ID    (uA_Decode, uA_OF_A, uA_OF_B),
+  EX    (uA_ALU_arith, uA_ALU_branch, uA_ALU_mem, uA_MUL, uA_DIV, uA_DIVU, uA_LSU),
+  MEM   (uA_Memory_R, uA_Memory_W),
+  WB    (uA_RegWriteBack)
+}
+
+Pipeline SHAKTI_C_pipeline (PCGEN -> IF -> ID -> EX -> MEM -> WB)
+
+/***** External Models *****/
+TraceValue {rs1, rs2, rd, pc, brTarget, rs2_data}
+
+ConnectorModel regModel (
+  link : "models/common/StandardRegisterModel.h"
+  trace : {rs1, rs2, rd}
+  connectorIn : Xd
+  connectorOut : {Xa, Xb}
+)
+
+ConnectorModel dyBranchPredModel (
+  link : "models/common/DynamicBranchPredictModel.h"
+  trace : {pc, brTarget}
+  connectorIn : {Pc_p, Pc_np}
+  connectorOut : Pc
+)
+
+ResourceModel divider (
+  link: "models/cv32e40p/DividerModel.h"
+  trace: rs2_data
+)
+
+ResourceModel divider_u (
+  link: "models/cv32e40p/DividerUnsignedModel.h"
+  trace: rs2_data
+)
+
+/***** Instruction Section *****/
+InstrGroup {
+  Arith_Ra_Rb (add, sub, xor, or, and, slt, sltu, sll, srl, sra, addw, subw, sllw, srlw, sraw),
+  Arith_Ra (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, addiw, slliw, srliw, sraiw),
+  Arith_X (auipc, lui),
+  Mul_Ra_Rb (mul, mulw),
+  MulH_Ra_Rb (mulh, mulhu, mulhsu),
+  Div_Ra_Rb (div, rem, divw, remw),
+  DivU_Ra_Rb (divu, remu, divuw, remuw),
+  Csr_Ra (csrrw, csrrs, csrrc),
+  Csr_X (csrrwi, csrrsi, csrrci),
+  Store (sb, sh, sw, sd),
+  Load (lb, lbu, lh, lhu, lw, lwu, ld),
+  Branch_Ra_Rb (beq, bne, blt, bge, bltu, bgeu),
+  Jump (jal),
+  JumpR (jalr),
+  Default ([?])
+}
+
+MicroactionMapping {
+  [ALL] :        {uA_PCGen, uA_IFetch, uA_Decode},
+  Arith_Ra_Rb :  {uA_OF_A, uA_OF_B, uA_ALU_arith, uA_RegWriteBack},
+  Arith_Ra :     {uA_OF_A, uA_ALU_arith, uA_RegWriteBack},
+  Arith_X :      {uA_ALU_arith, uA_RegWriteBack},
+  Mul_Ra_Rb :    {uA_OF_A, uA_OF_B, uA_MUL, uA_RegWriteBack},
+  MulH_Ra_Rb :   {uA_OF_A, uA_OF_B, uA_MUL, uA_RegWriteBack},
+  Div_Ra_Rb :    {uA_OF_A, uA_OF_B, uA_DIV, uA_RegWriteBack},
+  DivU_Ra_Rb :   {uA_OF_A, uA_OF_B, uA_DIVU, uA_RegWriteBack},
+  Csr_Ra :       {uA_OF_A, uA_ALU_arith, uA_RegWriteBack},
+  Csr_X :        {uA_ALU_arith, uA_RegWriteBack},
+  Store :        {uA_OF_A, uA_OF_B, uA_ALU_mem, uA_LSU, uA_Memory_W},
+  Load :         {uA_OF_A, uA_ALU_mem, uA_LSU, uA_Memory_R, uA_RegWriteBack},
+  Branch_Ra_Rb : {uA_OF_A, uA_OF_B, uA_ALU_branch},
+  Jump :         {uA_ALU_arith, uA_RegWriteBack},
+  JumpR :        {uA_OF_A, uA_ALU_arith, uA_RegWriteBack}
+}
+
+TraceValueMapping {
+  [ALL] : {
+      pc = "$resolved{$pc}"
+  },
+  Arith_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Arith_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Arith_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Mul_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  MulH_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+  Div_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+  DivU_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+  Csr_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Csr_X : {
+    rd  = "$bitfield{rd}"
+  },
+  Store : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}"
+  },
+  Load : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+  Branch_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}"
+  },
+  Jump : {
+    rd = "$bitfield{rd}",
+    brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}"
+  },
+  JumpR : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U"
+  }
+}
+
+/***** Variants *****/
+CorePerfModel SHAKTI_C (
+  core : "RV64IMACFD"
+  use Pipeline : SHAKTI_C_pipeline
+  use ConnectorModel : {dyBranchPredModel, regModel}
+)                

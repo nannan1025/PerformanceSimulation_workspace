@@ -1,0 +1,244 @@
+Connector {Pc_mp, Pc_pt, Pc_p, Pc_p_j, Pc_p_jr, Pc_c}
+Connector {Ic_out, Ic_in}
+Connector {Xa, Xb, Xd}
+Connector {Cb_out, Cb_in}
+
+Resource {PCGen, ICache(iCacheModel), MMU, Fetch_FIFO, Realigner, Decoder, ALU, Branch_Unit, MUL_I,MUL_O, DIV(divider), DIVU(divider_u), CSR_Buffer, Commit, DCache(dCacheModel),InstrQueue}
+Resource {Issue(0)}
+Resource {Scoreboard}
+Resource {LCtrl, LUnit, SCtrl, SUnit, FPU}
+Resource {Register_File}
+
+Microaction {
+    uA_PCGen            (PCGen),
+    uA_PcCorrect        (Pc_mp),
+    uA_CacheBlock       (Ic_out),
+
+    uA_MMU_Ctrl         (MMU),
+    uA_PcPredict        (Pc_pt),
+    uA_ICache           (ICache -> Ic_in),
+    uA_Fetch_FIFO       (Fetch_FIFO),
+
+    uA_Realigner        (Realigner),
+    uA_Realigner_br     (Realigner -> Pc_p),
+    uA_Realigner_j      (Realigner -> Pc_p_j),
+    uA_Realigner_jr     (Realigner -> Pc_p_jr),
+    uA_Decode           (Decoder),
+    uA_IQ_Insert        (InstrQueue),
+    uA_Issue            (Issue),
+    uA_Scoreboard       (Scoreboard),
+    uA_Clobber          (Cb_out),
+    uA_OF_A             (Xa),
+    uA_OF_B             (Xb),
+
+    uA_ALU_def          (ALU),
+    uA_ALU_reg          (ALU -> Xd),
+    uA_ALU_br           (ALU -> Pc_c),
+    uA_ALU_jr           (ALU -> {Xd, Pc_c}),
+    uA_Branch_Unit      (Branch_Unit -> Pc_c),
+
+    uA_LCtrl            (LCtrl),
+    uA_DCache           (DCache),
+    uA_LUnit            (LUnit -> Xd),
+    uA_SCtrl            (SCtrl),
+    uA_SUnit            (SUnit),
+    uA_MUL_I            (MUL_I -> Xd),
+    uA_MUL_O            (MUL_O -> Xd),
+    uA_DIV              (DIV -> Xd),
+    uA_DIVU             (DIVU -> Xd),
+    uA_CSR_Buffer       (CSR_Buffer -> Xd),
+    uA_FPU              (FPU -> Xd),
+
+    uA_Commit           (Commit),
+    uA_Commit_Cb        (Commit -> Cb_in),
+    uA_RegFile          (Register_File)
+}
+
+Stage {
+    IF_substage_0 (uA_MMU_Ctrl, uA_PcPredict),
+    IF_substage_1 (uA_ICache),
+    IF_substage_2 (uA_Realigner, uA_Realigner_br, uA_Realigner_j, uA_Realigner_jr, uA_Fetch_FIFO)
+}
+
+Pipeline IF_subpipe (IF_substage_0 -> IF_substage_1 -> IF_substage_2)
+
+Stage {
+    EX_ALU_substage    (uA_ALU_def, uA_ALU_reg, uA_ALU_br, uA_ALU_jr, uA_Branch_Unit),
+    EX_MUL_substage_0  (uA_MUL_I),
+    EX_MUL_substage_1  (uA_MUL_O),
+    EX_DIV_substage    (uA_DIV, uA_DIVU),
+    EX_substage_lCtrl  (uA_LCtrl),
+    EX_substage_dCache (uA_DCache),
+    EX_substage_lUnit  (uA_LUnit),
+    EX_substage_sCtrl  (uA_SCtrl),
+    EX_substage_sUnit  (uA_SUnit),
+    EX_CSR_substage    (uA_CSR_Buffer),
+    EX_FPU_substage    (uA_FPU)
+}
+
+Pipeline {
+    EX_ALU_subpipe    (EX_ALU_substage),
+    EX_MUL_subpipe    [blocks: EX_ALU_subpipe] (EX_MUL_substage_0 -> EX_MUL_substage_1),
+    EX_DIV_subpipe    [blocks: {EX_ALU_subpipe, EX_MUL_subpipe}] (EX_DIV_substage),
+    EX_subpipe_load   (EX_substage_lCtrl -> EX_substage_dCache -> EX_substage_lUnit),
+    EX_subpipe_store  (EX_substage_sCtrl -> EX_substage_sUnit),
+    EX_CSR_subpipe    (EX_CSR_substage),
+    EX_FPU_subpipe    (EX_FPU_substage)
+}
+
+Stage {
+    PC_stage   (uA_PCGen, uA_PcCorrect, uA_CacheBlock),
+    IF_stage   [capacity:3] (IF_subpipe),
+    IQ_stage   [capacity:7, output-buffer] (uA_IQ_Insert),
+    ID_stage   (uA_Decode),
+    IS_stage   (uA_Issue, uA_Scoreboard, uA_OF_A, uA_OF_B, uA_Clobber),
+    EX_stage   [capacity:8, output-buffer] (EX_ALU_subpipe, EX_MUL_subpipe, EX_DIV_subpipe, EX_subpipe_load, EX_subpipe_store, EX_CSR_subpipe, EX_FPU_subpipe),
+    COM_stage  [capacity:2] (uA_Commit, uA_Commit_Cb, uA_RegFile)
+}
+
+Pipeline CVA6_QWEN_1_pipeline (PC_stage -> IF_stage -> IQ_stage -> ID_stage -> IS_stage -> EX_stage -> COM_stage)
+
+TraceValue {rs1, rs2, rd, pc, addr, brTarget, imm, rs1_data, rs2_data}
+
+Model iCacheModel(
+    link : "models/cva6/ICacheModel.h"
+    trace : {pc}
+    connectorIn : {Ic_in}
+    connectorOut : {Ic_out}
+)
+
+Model dCacheModel (
+    link: "models/cva6/DCacheModel.h"
+    trace : addr
+)
+
+ConnectorModel dynBranchPredModel (
+    link : "models/cva6/BranchPredictionModel.h"
+    trace : {pc, brTarget, rs1, rd, imm}
+    connectorIn : {Pc_p, Pc_p_j, Pc_p_jr, Pc_c}
+    connectorOut : {Pc_mp, Pc_pt}
+)
+
+ConnectorModel regModel (
+    link : "models/common/StandardRegisterModel.h"
+    trace : {rs1, rs2, rd}
+    connectorIn : Xd
+    connectorOut : {Xa, Xb}
+)
+
+ConnectorModel clobberModel (
+    link : "models/cva6/ClobberModel.h"
+    trace : {rd}
+    connectorIn : Cb_in
+    connectorOut : Cb_out
+)
+
+ResourceModel divider (
+  link: "models/cva6/DividerModel.h"
+  trace: {rs1_data, rs2_data}
+)
+
+ResourceModel divider_u (
+  link: "models/cva6/DividerUnsignedModel.h"
+  trace: {rs1_data, rs2_data}
+)
+
+InstrGroup {
+    Default ([?]),
+    Arith_0 (auipc, lui, csrrwi, csrrsi, csrrci),
+    Arith_Rs1 (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, csrrw, csrrs, csrrc, addiw, slliw, sraiw, srliw),
+    Arith_Rs1_Rs2 (add, sub, xor, or, and, slt, sltu, sll, srl, sra, subw, addw),
+    Branch (beq, bne, blt, bge, bltu, bgeu),
+    Jump (jal),
+    JumpR (jalr),
+    Mul (mul, mulh, mulhu, mulhsu, mulw),
+    Div (div, rem, divw, remw),
+    DivU (divu, remu, divuw, remuw),
+    Load (lw, lh, lhu, lb, lbu, ld, lwu),
+    Store (sb, sh, sw, sd)
+}
+
+MicroactionMapping {
+    [ALL] : {uA_PCGen, uA_PcCorrect, uA_CacheBlock, uA_MMU_Ctrl, uA_PcPredict, uA_ICache, uA_Fetch_FIFO, uA_IQ_Insert, uA_Decode, uA_Issue, uA_Scoreboard},
+    Default : {uA_ALU_def, uA_Commit},
+    Arith_0 : {uA_Realigner, uA_ALU_reg, uA_Commit_Cb},
+    Arith_Rs1 : {uA_Realigner, uA_OF_A, uA_Clobber, uA_ALU_reg, uA_Commit_Cb},
+    Arith_Rs1_Rs2 : {uA_Realigner, uA_OF_A, uA_OF_B, uA_Clobber, uA_ALU_reg, uA_Commit_Cb},
+    Branch : {uA_Realigner_br, uA_OF_A, uA_OF_B, uA_ALU_br, uA_Branch_Unit, uA_Commit},
+    Jump : {uA_Realigner_j, uA_Clobber, uA_ALU_reg, uA_Commit_Cb},
+    JumpR : {uA_Realigner_jr, uA_OF_A, uA_Clobber, uA_ALU_jr, uA_Commit_Cb},
+    Mul : {uA_Realigner, uA_OF_A, uA_OF_B, uA_Clobber, uA_MUL_I, uA_MUL_O, uA_Commit_Cb},
+    Div : {uA_Realigner, uA_OF_A, uA_OF_B, uA_Clobber, uA_DIV, uA_Commit_Cb},
+    DivU : {uA_Realigner, uA_OF_A, uA_OF_B, uA_Clobber, uA_DIVU, uA_Commit_Cb},
+    Load : {uA_Realigner, uA_OF_A, uA_Clobber, uA_LCtrl, uA_DCache, uA_LUnit, uA_Commit_Cb},
+    Store : {uA_Realigner, uA_OF_A, uA_OF_B, uA_SCtrl, uA_DCache, uA_SUnit, uA_Commit}
+}
+
+TraceValueMapping {
+    [ALL] : {
+        pc = "$resolved{$pc}"
+    },
+    Arith_0 : {
+        rd = "$bitfield{rd}"
+    },
+    Arith_Rs1 : {
+        rs1 = "$bitfield{rs1}",
+        rd = "$bitfield{rd}"
+    },
+    Arith_Rs1_Rs2 : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd = "$bitfield{rd}"
+    },
+    Branch : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}",
+        imm = "$resolved{(((int16_t)($bitfield{imm} << 3)) >> 3)}"
+    },
+    Jump : {
+        rd = "$bitfield{rd}",
+        brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}",
+        imm = "$resolved{(((int32_t)($bitfield{imm} << 11)) >> 11)}"
+    },
+    JumpR : {
+        rs1 = "$bitfield{rs1}",
+        rd = "$bitfield{rd}",
+        brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U",
+        imm = "$resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}"
+    },
+    Mul : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}"
+    },
+    Div : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}",
+        rs1_data = "$reg{$bitfield{rs1}}",
+        rs2_data = "$reg{$bitfield{rs2}}"
+    },
+    DivU : {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}",
+        rd  = "$bitfield{rd}",
+        rs1_data = "$reg{$bitfield{rs1}}",
+        rs2_data = "$reg{$bitfield{rs2}}"
+    },
+    Load : {
+        rs1 = "$bitfield{rs1}",
+        rd  = "$bitfield{rd}",
+        addr = "($reg{$bitfield{rs1}} + $bitfield{imm})"
+    },
+    Store: {
+        rs1 = "$bitfield{rs1}",
+        rs2 = "$bitfield{rs2}"
+    }
+}
+
+CorePerfModel CVA6_QWEN_1 (
+  core : "RV64IMACFD"
+  use Pipeline : CVA6_QWEN_1_pipeline
+  use ConnectorModel : {regModel, dynBranchPredModel, clobberModel, iCacheModel}
+)
