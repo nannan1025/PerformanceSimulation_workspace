@@ -1,0 +1,482 @@
+//generate by gpt using info from rtl pipeline execution flow
+//date:0506
+//version 02
+// Conservative Rocket CorePerfDSL
+// Generated according to the provided Rocket instruction pipeline execution flow
+// IF -> ID -> EX -> MEM -> WB
+
+/***** Microaction Section *****/
+
+Connector {Pc_mp, Pc_pt, Pc_p, Pc_p_j, Pc_p_jr, Pc_c}
+Connector {Ic_out, Ic_in}
+Connector {Xa, Xb, Xd}
+
+Resource {PC_Gen, BPU, Decoder, ALU, ADD(3), SUB(3), SRA(2), Branch, CSRCommit, Reg}
+Resource {LCtrl, LoadWB, Retire}
+Resource {ICache(iCacheModel), DCache(dCacheModel)}
+Resource {MUL(3), MULW(3), MULH(4), DIV(divider), DIVU(divider_u)}
+Resource {EXPass, MEMPass, WBPass, MulDivWB, LinkSelect, ALUForward}
+
+Microaction {
+  /***** IF stage *****/
+  uA_PCGen              (PC_Gen),
+  uA_PcCorrect          (Pc_mp),
+  uA_CacheBlock         (Ic_out),
+  uA_PcPredict          (Pc_pt),
+  uA_IFetch             (ICache -> Ic_in),
+
+  uA_PredictBr          (BPU -> Pc_p),
+  uA_PredictJ           (BPU -> Pc_p_j),
+  uA_PredictJr          (BPU -> Pc_p_jr),
+
+  /***** ID stage *****/
+  uA_Decode             (Decoder),
+  uA_OF_A               (Xa),
+  uA_OF_B               (Xb),
+
+  /***** EX stage *****/
+  uA_ALU_arith_fw       (ALU -> Xd),
+  uA_ADD_arith_fw       (ADD -> Xd),
+  uA_SUB_arith_fw       (SUB -> Xd),
+  uA_SRA_arith_fw       (SRA -> Xd),
+  uA_ALU_arith          (ALU),
+
+  uA_MULReq             (MUL -> Xd),
+  uA_MULWReq            (MULW -> Xd),
+  uA_MULHReq            (MULH -> Xd),
+  uA_DIVReq             (DIV -> Xd),
+  uA_DIVUReq            (DIVU -> Xd),
+
+  uA_LCtrl   (LCtrl),
+
+  uA_EXPass             (EXPass),
+
+  /***** MEM stage *****/
+  uA_ALUForwardMEM      (ALUForward),
+  uA_MEMPass            (MEMPass),
+  uA_DCacheAccess       (DCache),
+
+  uA_BranchRedirectMEM  (Branch -> Pc_c),
+  uA_JALRedirectMEM     (Branch -> Pc_c),
+
+
+  /***** WB stage *****/
+  uA_LoadWriteBack      (LoadWB -> Xd),
+  uA_MulDivWriteBack    (MulDivWB),
+
+  uA_RegWriteBack       (Reg),
+  uA_ALURegWriteBack    (Reg -> Xd),
+  uA_RetireWB           (Retire),
+  uA_WBPass             (WBPass)
+}
+
+
+/***** Stages & Pipeline *****/
+
+Stage {
+  IF    (
+          uA_PCGen,
+          uA_PcCorrect,
+          uA_CacheBlock,
+          uA_PcPredict,
+          uA_IFetch,
+          uA_PredictBr,
+          uA_PredictJ,
+          uA_PredictJr
+        ),
+
+  ID    (
+          uA_Decode,
+          uA_OF_A,
+          uA_OF_B
+        ),
+
+  EX    (
+          uA_ALU_arith,
+          uA_ALU_arith_fw,
+          uA_ADD_arith_fw,
+          uA_SUB_arith_fw,
+          uA_SRA_arith_fw,
+          uA_MULReq,
+          uA_MULWReq,
+          uA_MULHReq,
+          uA_DIVReq,
+          uA_DIVUReq,
+          uA_EXPass
+        ),
+
+  MEM   (
+          uA_MEMPass,
+          uA_ALUForwardMEM,
+          uA_DCacheAccess,
+          uA_BranchRedirectMEM,
+          uA_JALRedirectMEM
+        ),
+
+  WB    (
+          uA_ALURegWriteBack,
+          uA_LoadWriteBack,
+          uA_MulDivWriteBack,
+          uA_RegWriteBack,
+          uA_RetireWB,
+          uA_WBPass
+        )
+}
+
+Pipeline ROCKET_pipeline (IF -> ID -> EX -> MEM -> WB)
+
+
+/***** External Models *****/
+
+TraceValue {rs1, rs2, rd, pc, brTarget, imm, rs1_data, rs2_data, addr}
+
+Model iCacheModel (
+  link : "models/rocket/ICacheModel.h"
+  trace : {pc}
+  connectorIn : {Ic_in}
+  connectorOut : {Ic_out}
+)
+
+ConnectorModel regModel (
+  link : "models/common/StandardRegisterModel.h"
+  trace : {rs1, rs2, rd}
+  connectorIn : Xd
+  connectorOut : {Xa, Xb}
+)
+
+ConnectorModel dynBranchPredModel (
+  link : "models/rocket/BranchPredictionModel.h"
+  trace : {pc, brTarget, rs1, rd, imm}
+  connectorIn : {Pc_p, Pc_p_j, Pc_p_jr, Pc_c}
+  connectorOut : {Pc_mp, Pc_pt}
+)
+
+ResourceModel divider (
+  link : "models/rocket/DividerModel.h"
+  trace : {rs1_data, rs2_data}
+)
+
+ResourceModel divider_u (
+  link : "models/rocket/DividerUnsignedModel.h"
+  trace : {rs1_data, rs2_data}
+)
+
+Model dCacheModel (
+  link : "models/rocket/DCacheModel.h"
+  trace : {addr}
+)
+
+
+/***** Instruction Section *****/
+
+InstrGroup {
+  Add_Ra_Rb (add),
+  Sub_Ra_Rb (sub),
+  Sra_Ra_Rb (sra),
+  Arith_Ra_Rb (xor, or, and, slt, sltu, sll, srl, sraw, addw, subw),
+  Arith_Ra (addi, xori, ori, andi, slti, sltiu, slli, srli, srai, addiw, slliw, sraiw, srliw),
+  Arith_X (auipc, lui),
+
+  Mul_Ra_Rb (mul),
+  MulW_Ra_Rb (mulw),
+  MulH_Ra_Rb (mulh, mulhu, mulhsu),
+  Div_Ra_Rb (div, rem, divw, remw),
+  DivU_Ra_Rb (divu, remu, divuw, remuw),
+
+  Csr_Ra (csrrw, csrrs, csrrc),
+  Csr_X (csrrwi, csrrsi, csrrci),
+
+  Store (sb, sh, sw, sd),
+  Load (lb, lbu, lh, lhu, lw, ld, lwu),
+
+  Branch_Ra_Rb (beq, bne, blt, bge, bltu, bgeu),
+  Jump (jal),
+  JumpR (jalr),
+
+  Default ([?])
+}
+
+MicroactionMapping {
+  [ALL] : {
+    uA_PCGen,
+    uA_PcCorrect,
+    uA_CacheBlock,
+    uA_PcPredict,
+    uA_IFetch,
+    uA_Decode
+  },
+
+  /***** Integer ALU instructions *****/
+  Add_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_ADD_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  Sub_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_SUB_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  Sra_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_SRA_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  Arith_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_ALU_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  Arith_Ra : {
+    uA_OF_A,
+    uA_ALU_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  Arith_X : {
+    uA_ALU_arith_fw,
+    uA_ALUForwardMEM,
+    uA_RegWriteBack
+  },
+
+  /***** Multiply / Divider instructions *****/
+  Mul_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_MULReq,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  MulW_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_MULWReq,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  MulH_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_MULHReq,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  Div_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_DIVReq,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  DivU_Ra_Rb : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_DIVUReq,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  /***** CSR / System instructions *****/
+  Csr_Ra : {
+    uA_OF_A,
+    uA_EXPass,
+    uA_MEMPass,
+    uA_ALURegWriteBack
+  },
+
+  Csr_X : {
+    uA_EXPass,
+    uA_MEMPass,
+    uA_RegWriteBack
+  },
+
+  /***** Load / Store instructions *****/
+  Load : {
+    uA_OF_A,
+    uA_ALU_arith,
+    uA_LCtrl,
+    uA_DCacheAccess,
+    uA_LoadWriteBack
+  },
+
+  Store : {
+    uA_OF_A,
+    uA_OF_B,
+    uA_ALU_arith,
+    uA_LCtrl,
+    uA_DCacheAccess,
+    uA_RetireWB
+  },
+
+  /***** Conditional Branch *****/
+  Branch_Ra_Rb : {
+    uA_PredictBr,
+    uA_OF_A,
+    uA_OF_B,
+    uA_ALU_arith,
+    uA_BranchRedirectMEM,
+    uA_RetireWB
+  },
+
+  /***** JAL *****/
+  Jump : {
+    uA_PredictJ,
+    uA_ALU_arith,
+    uA_JALRedirectMEM,
+    uA_ALURegWriteBack
+  },
+
+  /***** JALR *****/
+  JumpR : {
+    uA_PredictJr,
+    uA_OF_A,
+    uA_ALU_arith,
+    uA_JALRedirectMEM,
+    uA_ALURegWriteBack
+  },
+
+  Default : {
+    uA_EXPass,
+    uA_MEMPass,
+    uA_WBPass
+  }
+}
+
+TraceValueMapping {
+  [ALL] : {
+    pc = "$resolved{$pc}"
+  },
+
+  Add_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Sub_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Sra_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Arith_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Arith_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Arith_X : {
+    rd  = "$bitfield{rd}"
+  },
+
+  Mul_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  MulW_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  MulH_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Div_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs1_data = "$reg{$bitfield{rs1}}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+
+  DivU_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    rd  = "$bitfield{rd}",
+    rs1_data = "$reg{$bitfield{rs1}}",
+    rs2_data = "$reg{$bitfield{rs2}}"
+  },
+
+  Csr_Ra : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}"
+  },
+
+  Csr_X : {
+    rd  = "$bitfield{rd}"
+  },
+
+  Store : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    addr = "($reg{$bitfield{rs1}} + $bitfield{imm})"
+  },
+
+  Load : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    addr = "($reg{$bitfield{rs1}} + $bitfield{imm})"
+  },
+
+  Branch_Ra_Rb : {
+    rs1 = "$bitfield{rs1}",
+    rs2 = "$bitfield{rs2}",
+    brTarget = "$resolved{$pc + (((int16_t)($bitfield{imm} << 3)) >> 3)}",
+    imm = "$resolved{(((int16_t)($bitfield{imm} << 3)) >> 3)}"
+  },
+
+  Jump : {
+    rd = "$bitfield{rd}",
+    brTarget = "$resolved{$pc + (((int32_t)($bitfield{imm} << 11)) >> 11)}",
+    imm = "$resolved{(((int32_t)($bitfield{imm} << 11)) >> 11)}"
+  },
+
+  JumpR : {
+    rs1 = "$bitfield{rs1}",
+    rd  = "$bitfield{rd}",
+    brTarget = "($reg{$bitfield{rs1}} + $resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}) & -2U",
+    imm = "$resolved{(((int16_t)($bitfield{imm} << 4)) >> 4)}"
+  }
+}
+
+/***** Variants *****/
+
+CorePerfModel ROCKET (
+  core : "RV64IMACFD"
+  use Pipeline : ROCKET_pipeline
+  use ConnectorModel : {dynBranchPredModel, regModel, iCacheModel}
+)
