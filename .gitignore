@@ -20,4 +20,6 @@ target_sw/examples/cva6/embench/aha-mont64.dump
 .llm_output/analysis/bottleneck_knowledge/CV32E40P/test/
 .llm_output/analysis/bottleneck_knowledge/CV32E40P/__pycache__/
 .llm_output/analysis/bottleneck_knowledge/CVA6/test/
+.llm_output/correction/test/
+
 
