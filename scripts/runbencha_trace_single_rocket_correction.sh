@@ -8,7 +8,7 @@ compare_core="$2"
 arg_upper="${core_name^^}"
 benches=(
 # aha-mont64
-# crc32
+crc32
 # cubic
 # edn
 # huffbench
@@ -24,7 +24,7 @@ benches=(
 # qrduino
 # sglib-combined
 # slre
-st
+# st
 # statemate
 # ### tarfind
 # ud
@@ -43,8 +43,8 @@ TARGET_DIR_VALUE="$(printenv "$TARGET_DIR")"
 for b in "${benches[@]}"; do
     
     # outdir="./trace_output/ROCKET/rocket_${b}"
-    outdir="/home/yang/program/project/AIResearch/trace_error_analysis/agent2/data/${b}"
-    # outdir="./trace_output/RC/rocket_${b}"
+    # outdir="/home/yang/program/project/AIResearch/trace_error_analysis/agent2/data/${b}"
+    outdir="./trace_output/RC/rocket_${b}"
     mkdir -p "$outdir/asm"
     mkdir -p "$outdir/perf"
     rm -rf "$outdir/asm"/*

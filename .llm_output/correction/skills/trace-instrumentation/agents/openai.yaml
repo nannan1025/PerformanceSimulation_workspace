@@ -1,0 +1,4 @@
+interface:
+  display_name: "CorePerfDSL Trace Instrumentation"
+  short_description: "Repeatably instrument generated timing traces and validate CSV output"
+  default_prompt: "Instrument the generated backend for the CorePerfDSL path I provide, preserve existing fields, record new scheduling variables safely, build, run the benchmark, validate timing CSVs, and write the insertion history and report."

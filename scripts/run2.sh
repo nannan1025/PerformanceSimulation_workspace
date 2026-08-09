@@ -22,9 +22,12 @@ do
     elif [ "$arg" = "CVA6_QWEN_1" ] && [ ${CORE_SPECIFIED} == 0 ]; then
         CMD_OPTIONS="${CMD_OPTIONS} --core CVA6_QWEN_1"
         CORE_SPECIFIED=1
-    # AUTO-GENERATED-START
     elif [ "$arg" = "ROCKET" ] && [ ${CORE_SPECIFIED} == 0 ]; then
         CMD_OPTIONS="${CMD_OPTIONS} --core ROCKET"
+        CORE_SPECIFIED=1
+    # AUTO-GENERATED-START
+    elif [ "$arg" = "RC" ] && [ ${CORE_SPECIFIED} == 0 ]; then
+        CMD_OPTIONS="${CMD_OPTIONS} --core RC"
         CORE_SPECIFIED=1
 
     # AUTO-GENERATED-END
